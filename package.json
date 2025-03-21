@@ -1,0 +1,22 @@
+{
+  "name": "notion-d1-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for syncing Notion content to D1",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "bun test",
+    "type-check": "bun type-check"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20250320.0",
+    "bun-types": "1.2.5",
+    "typescript": "^5.3.3",
+    "wrangler": "4"
+  }
+}

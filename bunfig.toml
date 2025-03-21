@@ -1,0 +1,17 @@
+[install]
+# Use exact versions for better reproducibility
+exact = true
+
+[install.scopes]
+# Use the Cloudflare registry for @cloudflare packages
+"@cloudflare" = "https://registry.npmjs.org"
+
+[test]
+# Configure test environment
+coverage = true
+# Use TypeScript for tests
+loader = "ts"
+
+[debug]
+# Enable source maps for debugging
+sourcemap = true 

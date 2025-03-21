@@ -1,0 +1,12 @@
+# Notion API Configuration
+NOTION_TOKEN=your_notion_integration_token_here
+NOTION_DATABASE_ID=your_notion_database_id_here
+
+# Note:
+# 1. Copy this file to .dev.vars for local development
+# 2. These variables will be available during `wrangler dev`
+# 3. For production, use `wrangler secret put` to set secrets:
+#    ```bash
+#    wrangler secret put NOTION_TOKEN
+#    wrangler secret put NOTION_DATABASE_ID
+#    ``` 

@@ -1,9 +1,9 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { clearPosts, getPosts } from "../src/services/d1";
-import { fetchPublishedPosts } from "../src/services/notion";
-import { syncPosts } from "../src/services/sync";
-import type { D1Post, NotionPage } from "../src/types";
+import { clearPosts, getPosts } from "../src/services/d1.service";
+import { fetchPublishedPosts } from "../src/services/notion.service";
+import { syncPosts } from "../src/services/sync.service";
+import type { D1Post, NotionPage } from "../src/types/types";
 
 describe("Workflow Integration", () => {
   let notionToken: string;

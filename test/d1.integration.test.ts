@@ -8,8 +8,12 @@ import {
   getPostsByCategory,
   insertPosts,
   updatePost,
-} from "../src/services/d1";
-import type { D1Post, D1PostExtended, D1PostMetadata } from "../src/types";
+} from "../src/services/d1.service";
+import type {
+  D1Post,
+  D1PostExtended,
+  D1PostMetadata,
+} from "../src/types/types";
 
 describe("D1 Integration", () => {
   let db: D1Database;
@@ -32,10 +36,10 @@ describe("D1 Integration", () => {
       category: "Technology",
       author: "Test User",
       notion_url: "https://notion.so/test",
+      excerpt: "Test excerpt",
     };
 
     const extended: D1PostExtended = {
-      excerpt: "Test excerpt",
       summary: "Test summary",
       mins_read: 5,
       image_url: "https://example.com/test.jpg",
@@ -140,10 +144,10 @@ describe("D1 Integration", () => {
       category: "Technology",
       author: "Test User",
       notion_url: "https://notion.so/test",
+      excerpt: null,
     };
 
     const extended: D1PostExtended = {
-      excerpt: null,
       summary: null,
       mins_read: null,
       image_url: null,
@@ -189,7 +193,6 @@ describe("D1 Integration", () => {
 
     // Update extended fields
     const updates: Required<D1PostExtended> = {
-      excerpt: "Updated excerpt",
       summary: "Updated summary",
       mins_read: 10,
       image_url: "https://example.com/updated.jpg",
@@ -210,9 +213,9 @@ describe("D1 Integration", () => {
     expect(updatedPost.category).toBe(testPost.category);
     expect(updatedPost.author).toBe(testPost.author);
     expect(updatedPost.notion_url).toBe(testPost.notion_url);
+    expect(updatedPost.excerpt).toBe(testPost.excerpt);
 
     // Extended fields should be updated
-    expect(updatedPost.excerpt).toBe(updates.excerpt);
     expect(updatedPost.summary).toBe(updates.summary);
     expect(updatedPost.mins_read).toBe(updates.mins_read);
     expect(updatedPost.image_url).toBe(updates.image_url);
@@ -232,7 +235,6 @@ describe("D1 Integration", () => {
 
     // Update only some fields
     const updates: Partial<D1PostExtended> = {
-      excerpt: "Updated excerpt",
       r2_image_url: "https://r2.example.com/updated.jpg",
     };
 
@@ -244,7 +246,6 @@ describe("D1 Integration", () => {
     const updatedPost = posts[0];
 
     // Only specified fields should be updated
-    expect(updatedPost.excerpt).toBe(updates.excerpt ?? null);
     expect(updatedPost.r2_image_url).toBe(updates.r2_image_url ?? null);
 
     // Other fields should remain unchanged
@@ -252,6 +253,7 @@ describe("D1 Integration", () => {
     expect(updatedPost.mins_read).toBe(testPost.mins_read);
     expect(updatedPost.image_url).toBe(testPost.image_url);
     expect(updatedPost.tags).toBe(testPost.tags);
+    expect(updatedPost.excerpt).toBe(testPost.excerpt);
   });
 
   // Clean up after all tests

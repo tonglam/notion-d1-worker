@@ -1,6 +1,6 @@
 # Notion D1 Worker
 
-A high-performance content sync system that automatically synchronizes content from Notion to Cloudflare D1, enabling you to use Notion as a CMS while leveraging Cloudflare's edge database for content delivery.
+A high-performance content sync system that automatically synchronizes content from Notion to Cloudflare D1, enabling you to use Notion as a CMS while leveraging Cloudflare's edge database for content delivery. Features AI-powered content enhancement including automatic summarization, tag generation, and technical illustrations.
 
 ## What This Project Does
 
@@ -10,6 +10,10 @@ This project creates a bridge between Notion and Cloudflare D1, allowing you to:
 2. Automatically sync content to Cloudflare's edge database (D1)
 3. Serve content globally with ultra-low latency
 4. Stay within Cloudflare's free tier limits
+5. Generate AI-powered content enhancements:
+   - Automatic content summarization
+   - SEO-optimized tag generation
+   - Technical illustrations for posts
 
 ## Tech Stack
 
@@ -19,6 +23,8 @@ This project creates a bridge between Notion and Cloudflare D1, allowing you to:
   - [Cloudflare D1](https://developers.cloudflare.com/d1/) - SQLite at the edge
 - **API Integration**:
   - [Notion API](https://developers.notion.com/) - Content management
+  - [Deepseek](https://deepseek.com) - AI text generation
+  - [DashScope](https://dashscope.aliyun.com) - AI image generation
 - **Language & Type Safety**:
   - [TypeScript](https://www.typescriptlang.org/) - Type-safe development
 - **Testing**:
@@ -72,28 +78,11 @@ sequenceDiagram
 Before you begin, ensure you have:
 
 1. A [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier is sufficient)
-2. A [Notion account](https://www.notion.so/) with a database
+2. A [Notion account](https://www.notion.so/) with a root page for content
 3. [Bun](https://bun.sh) installed on your machine
-4. A Notion database with the following properties:
-
-Required Properties:
-| Property Name | Type | Description |
-|--------------|------|-------------|
-| Title | Title | Post title |
-| Slug | Rich Text | URL-friendly identifier |
-| Published | Checkbox | Publication status |
-| Category | Select | Content category |
-| Tags | Multi-select | Content tags |
-| Author | People | Content author(s) |
-| Content Key | Rich Text | Unique content identifier |
-
-Optional Properties:
-| Property Name | Type | Description |
-|--------------|------|-------------|
-| Excerpt | Rich Text | Short description |
-| Summary | Rich Text | Longer description |
-| Mins Read | Number | Reading time |
-| Image URL | URL | Featured image |
+4. API keys for AI services:
+   - [Deepseek API](https://deepseek.com) for text generation
+   - [DashScope API](https://dashscope.aliyun.com) for image generation
 
 ## Quick Start
 
@@ -110,8 +99,8 @@ Optional Properties:
    - Go to [Notion Integrations](https://www.notion.so/my-integrations)
    - Create a new integration
    - Copy the integration token
-   - Share your Notion database with the integration
-   - Copy your database ID from the database URL
+   - Share your root page with the integration
+   - Copy your root page ID from the page URL
 
 3. **Configure Environment**
 
@@ -125,7 +114,9 @@ Optional Properties:
    ```env
    # In .dev.vars (local development)
    NOTION_TOKEN=your_notion_integration_token
-   NOTION_DATABASE_ID=your_notion_database_id
+   NOTION_ROOT_PAGE_ID=your_notion_root_page_id
+   DASHSCOPE_API_KEY=your_dashscope_api_key
+   DEEPSEEK_API_KEY=your_deepseek_api_key
 
    # In .env (deployment)
    CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
@@ -137,7 +128,9 @@ Optional Properties:
    ```bash
    # Configure production secrets
    wrangler secret put NOTION_TOKEN
-   wrangler secret put NOTION_DATABASE_ID
+   wrangler secret put NOTION_ROOT_PAGE_ID
+   wrangler secret put DASHSCOPE_API_KEY
+   wrangler secret put DEEPSEEK_API_KEY
 
    # Create D1 database
    wrangler d1 create notion-posts
@@ -168,7 +161,9 @@ notion-d1-worker/
 │   ├── services/     # Core services
 │   │   ├── notion.ts # Notion integration
 │   │   ├── d1.ts    # D1 database operations
-│   │   └── sync.ts  # Sync orchestration
+│   │   ├── sync.ts  # Sync orchestration
+│   │   ├── ai.ts    # AI service integration
+│   │   └── ai/      # AI-specific modules
 │   ├── types.ts      # Type definitions
 │   └── utils/        # Utility functions
 ├── db/               # Database files
@@ -177,16 +172,39 @@ notion-d1-worker/
 └── documentation/    # Project documentation
 ```
 
+## AI Features
+
+The project includes several AI-powered enhancements:
+
+1. **Content Summarization**
+
+   - Automatically generates concise summaries of articles
+   - Uses Deepseek's advanced language model
+   - Optimized for technical content
+
+2. **Tag Generation**
+
+   - Extracts relevant keywords and keyphrases
+   - SEO-optimized tag suggestions
+   - Configurable number of tags
+
+3. **Technical Illustrations**
+   - Generates professional technical diagrams
+   - Clean, minimalist style
+   - Text-free visual representations
+
 ## Limitations & Considerations
 
 - Runs once per day (configurable)
 - Processes posts in batches of 100 (free tier limit)
 - Only syncs published posts
 - Uses clear-and-replace sync strategy
-- Operates within Cloudflare's free tier limits:
+- Operates within service limits:
   - 100,000 D1 reads per day
   - 1,000 D1 writes per day
   - 100,000 Worker requests per day
+  - AI service rate limits apply
+  - Image generation quotas based on DashScope plan
 
 ## Security Best Practices
 
@@ -195,6 +213,8 @@ notion-d1-worker/
 - Keep API tokens secure
 - Follow least-privilege principle for integrations
 - Regularly rotate API tokens
+- Secure AI service credentials
+- Monitor AI service usage and costs
 
 ## License
 

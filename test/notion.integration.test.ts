@@ -2,8 +2,8 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import {
   fetchPublishedPosts,
   transformToD1Posts,
-} from "../src/services/notion";
-import type { D1Post, NotionPage } from "../src/types";
+} from "../src/services/notion.service";
+import type { D1Post, NotionPage } from "../src/types/types";
 
 describe("Notion Integration", () => {
   let notionToken: string;

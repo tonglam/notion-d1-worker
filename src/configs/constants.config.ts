@@ -2,6 +2,76 @@
 /** Notion API version to use */
 export const NOTION_API_VERSION = "2022-06-28";
 
+/** DeepSeek API Configuration */
+export interface DeepSeekConfig {
+  LIMITS: {
+    MAX_INPUT_TOKENS: number;
+    MAX_OUTPUT_TOKENS: number;
+  };
+}
+
+export const DEEPSEEK_API: DeepSeekConfig = {
+  LIMITS: {
+    MAX_INPUT_TOKENS: 32000, // Max CoT tokens for reasoner
+    MAX_OUTPUT_TOKENS: 8000,
+  },
+} as const;
+
+/** DashScope API Configuration */
+export interface DashScopeConfig {
+  BASE_URL: string;
+  ENDPOINTS: {
+    IMAGE_SYNTHESIS: string;
+    TASK_STATUS: (taskId: string) => string;
+  };
+  MODELS: {
+    IMAGE: string;
+  };
+  DEFAULT_CONFIG: {
+    IMAGE: {
+      SIZE: string;
+      COUNT: number;
+      MAX_ATTEMPTS: number;
+      CHECK_INTERVAL: number;
+    };
+  };
+  HEADERS: {
+    ASYNC: string;
+    CONTENT_TYPE: string;
+  };
+  LIMITS: {
+    MAX_PROMPT_LENGTH: number;
+    MAX_CONCURRENT_TASKS: number;
+  };
+}
+
+export const DASHSCOPE_API: DashScopeConfig = {
+  BASE_URL: "https://dashscope.aliyuncs.com/api/v1",
+  ENDPOINTS: {
+    IMAGE_SYNTHESIS: "/text2image/generation",
+    TASK_STATUS: (taskId: string) => `/tasks/${taskId}`,
+  },
+  MODELS: {
+    IMAGE: "stable-diffusion-xl",
+  },
+  DEFAULT_CONFIG: {
+    IMAGE: {
+      SIZE: "1024*1024",
+      COUNT: 1,
+      MAX_ATTEMPTS: 30,
+      CHECK_INTERVAL: 2000,
+    },
+  },
+  HEADERS: {
+    ASYNC: "X-DashScope-Async",
+    CONTENT_TYPE: "application/json",
+  },
+  LIMITS: {
+    MAX_PROMPT_LENGTH: 1000,
+    MAX_CONCURRENT_TASKS: 50,
+  },
+} as const;
+
 // Database Configuration
 /** Maximum batch size for D1 operations (free tier limit) */
 export const BATCH_SIZE = 50;

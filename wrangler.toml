@@ -11,7 +11,9 @@ database_id = "c639cd89-4017-4bda-bb9f-46befa035be4"
 
 # Cron Trigger Configuration
 [triggers]
-crons = ["0 5 * * *"]   # Run daily at 5 AM UTC
+# Main sync runs at 5 AM UTC
+# Image collection runs at 5:30 AM UTC to allow time for image generation
+crons = ["0 5 * * *", "30 5 * * *"]
 
 [observability]
 enabled = true
@@ -19,7 +21,7 @@ enabled = true
 # Environment Variables
 [vars]
 # Set in Cloudflare dashboard or use `wrangler secret put`
-NOTION_DATABASE_ID = "1ab7ef86-a5ad-81ab-a4cb-f8b8f37ec491"
+NOTION_ROOT_PAGE_ID = "1ab7ef86-a5ad-81ab-a4cb-f8b8f37ec491"
 
 # Secrets (Do not set here)
 # Use `wrangler secret put NOTION_TOKEN` to set your Notion API token securely 

@@ -44,21 +44,35 @@ describe("Workflow Integration", () => {
       if (d1Post) {
         // Verify required fields
         expect(d1Post.title).toBe(
-          notionPage.properties.Title.title[0]?.plain_text
+          notionPage.properties.Title.title[0]?.plain_text ?? ""
         );
-        expect(d1Post.slug).toBe(
-          notionPage.properties.Slug.rich_text[0]?.plain_text
+        expect(d1Post.category).toBe(
+          notionPage.properties.Category.select?.name ?? ""
         );
-        expect(d1Post.published).toBe(notionPage.properties.Published.checkbox);
-        expect(d1Post.category).toBeDefined();
-        expect(d1Post.tags).toBeDefined();
-        expect(d1Post.author).toBeDefined();
-        expect(d1Post.content_key).toBeDefined();
+        expect(d1Post.author).toBe(
+          notionPage.properties.Author.people[0]?.name ?? ""
+        );
+        expect(d1Post.notion_url).toBe(notionPage.url);
 
-        // Verify JSON fields
-        expect(() => JSON.parse(d1Post.category)).not.toThrow();
-        expect(() => JSON.parse(d1Post.tags)).not.toThrow();
-        expect(() => JSON.parse(d1Post.author)).not.toThrow();
+        // Verify optional fields
+        expect(d1Post.excerpt).toBe(
+          notionPage.properties.Excerpt.rich_text[0]?.plain_text ?? null
+        );
+        expect(d1Post.summary).toBe(
+          notionPage.properties.Summary.rich_text[0]?.plain_text ?? null
+        );
+        expect(d1Post.mins_read).toBe(
+          notionPage.properties["Mins Read"].number ?? null
+        );
+        expect(d1Post.image_url).toBe(
+          notionPage.properties["Image URL"].url ?? null
+        );
+        expect(d1Post.tags).toBe(
+          notionPage.properties.Tags.multi_select
+            .map((t) => t.name)
+            .join(", ") || null
+        );
+        expect(d1Post.r2_image_url).toBeNull(); // Should be null initially
       }
     }
   });

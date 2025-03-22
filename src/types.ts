@@ -46,14 +46,6 @@ export interface NotionPageProperties {
       plain_text: string;
     }>;
   };
-  Slug: {
-    rich_text: Array<{
-      plain_text: string;
-    }>;
-  };
-  Published: {
-    checkbox: boolean;
-  };
   Category: {
     select: {
       name: string;
@@ -79,9 +71,6 @@ export interface NotionPageProperties {
   "Image URL": {
     url: string | null;
   };
-  "Content Key": {
-    rich_text: Array<NotionRichText>;
-  };
 }
 
 export interface NotionPage {
@@ -93,38 +82,41 @@ export interface NotionPage {
 }
 
 // Database Types
-export interface D1Post {
+export interface D1PostMetadata {
   /** Unique identifier from Notion */
   id: string;
   /** Post title */
   title: string;
-  /** URL-friendly slug */
-  slug: string;
   /** ISO timestamp of creation */
   created_at: string;
-  /** ISO timestamp of last update */
+  /** ISO timestamp of last update in D1 */
   updated_at: string;
-  /** Whether the post is published */
-  published: boolean;
-  /** Stringified category object */
+  /** ISO timestamp of last edit in Notion */
+  notion_last_edited_at: string;
+  /** Post category */
   category: string;
-  /** Stringified array of tags */
-  tags: string;
-  /** Stringified array of authors */
+  /** Post author name */
   author: string;
-  /** Optional excerpt text */
-  excerpt?: string | null;
-  /** Optional summary text */
-  summary?: string | null;
-  /** Optional reading time in minutes */
-  mins_read?: number | null;
-  /** Optional URL to post image */
-  image_url?: string | null;
   /** URL to Notion page */
   notion_url: string;
-  /** Key for content caching */
-  content_key: string;
 }
+
+export interface D1PostExtended {
+  /** Optional excerpt text */
+  excerpt: string | null;
+  /** Optional summary text */
+  summary: string | null;
+  /** Optional reading time in minutes */
+  mins_read: number | null;
+  /** Optional URL to original image */
+  image_url: string | null;
+  /** Optional comma-separated tags */
+  tags: string | null;
+  /** Optional URL to R2 image */
+  r2_image_url: string | null;
+}
+
+export interface D1Post extends D1PostMetadata, D1PostExtended {}
 
 // Operation Result Types
 export interface SyncResult {

@@ -7,7 +7,7 @@ compatibility_date = "2024-03-21"
 [[d1_databases]]
 binding = "DB"
 database_name = "notion-posts"
-database_id = "9fd328fe-c2a1-4bfe-aa8e-b8993ec3e49d"
+database_id = "c639cd89-4017-4bda-bb9f-46befa035be4"
 
 # Cron Trigger Configuration
 [triggers]

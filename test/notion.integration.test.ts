@@ -28,16 +28,16 @@ describe("Notion Integration", () => {
       expect(page.id).toBeDefined();
       expect(page.properties).toBeDefined();
       expect(page.properties.Title).toBeDefined();
-      expect(page.properties.Slug).toBeDefined();
 
       // Verify required properties
       expect(page.properties.Title.title).toBeInstanceOf(Array);
-      expect(page.properties.Slug.rich_text).toBeInstanceOf(Array);
-      expect(typeof page.properties.Published.checkbox).toBe("boolean");
       expect(page.properties.Category.select).toBeDefined();
       expect(page.properties.Tags.multi_select).toBeInstanceOf(Array);
       expect(page.properties.Author.people).toBeInstanceOf(Array);
-      expect(page.properties["Content Key"].rich_text).toBeInstanceOf(Array);
+      expect(page.properties.Excerpt.rich_text).toBeInstanceOf(Array);
+      expect(page.properties.Summary.rich_text).toBeInstanceOf(Array);
+      expect(typeof page.properties["Mins Read"].number).toBe("number");
+      expect(page.properties["Image URL"].url).toBeDefined();
     }
   });
 
@@ -52,19 +52,19 @@ describe("Notion Integration", () => {
       // Required fields
       expect(post.id).toBeDefined();
       expect(post.title).toBeDefined();
-      expect(post.slug).toBeDefined();
       expect(post.created_at).toBeDefined();
       expect(post.updated_at).toBeDefined();
-      expect(typeof post.published).toBe("boolean");
+      expect(post.notion_last_edited_at).toBeDefined();
       expect(post.category).toBeDefined();
-      expect(post.tags).toBeDefined();
       expect(post.author).toBeDefined();
-      expect(post.content_key).toBeDefined();
+      expect(post.notion_url).toBeDefined();
 
-      // Verify JSON fields are properly stringified
-      expect(() => JSON.parse(post.category)).not.toThrow();
-      expect(() => JSON.parse(post.tags)).not.toThrow();
-      expect(() => JSON.parse(post.author)).not.toThrow();
+      // Verify timestamps are valid ISO strings
+      expect(() => new Date(post.created_at).toISOString()).not.toThrow();
+      expect(() => new Date(post.updated_at).toISOString()).not.toThrow();
+      expect(() =>
+        new Date(post.notion_last_edited_at).toISOString()
+      ).not.toThrow();
 
       // Optional fields should be either string/number or null
       expect(typeof post.excerpt === "string" || post.excerpt === null).toBe(
@@ -78,6 +78,10 @@ describe("Notion Integration", () => {
       ).toBe(true);
       expect(
         typeof post.image_url === "string" || post.image_url === null
+      ).toBe(true);
+      expect(typeof post.tags === "string" || post.tags === null).toBe(true);
+      expect(
+        typeof post.r2_image_url === "string" || post.r2_image_url === null
       ).toBe(true);
     }
   });

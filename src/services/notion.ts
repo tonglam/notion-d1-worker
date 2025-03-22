@@ -76,20 +76,20 @@ export const transformToD1Posts = (pages: NotionPage[]): D1Post[] => {
     return pages.map((page) => ({
       id: page.id,
       title: page.properties.Title.title[0]?.plain_text || "",
-      slug: page.properties.Slug.rich_text[0]?.plain_text || "",
       created_at: new Date(page.created_time).toISOString(),
-      updated_at: new Date(page.last_edited_time).toISOString(),
-      published: page.properties.Published.checkbox,
-      category: JSON.stringify(page.properties.Category.select || {}),
-      tags: JSON.stringify(page.properties.Tags.multi_select || []),
-      author: JSON.stringify(page.properties.Author.people || []),
+      updated_at: new Date().toISOString(),
+      notion_last_edited_at: new Date(page.last_edited_time).toISOString(),
+      category: page.properties.Category.select?.name || "",
+      author: page.properties.Author.people[0]?.name || "",
       excerpt: page.properties.Excerpt?.rich_text[0]?.plain_text || null,
       summary: page.properties.Summary?.rich_text[0]?.plain_text || null,
       mins_read: page.properties["Mins Read"]?.number || null,
       image_url: page.properties["Image URL"]?.url || null,
       notion_url: page.url,
-      content_key:
-        page.properties["Content Key"].rich_text[0]?.plain_text || "",
+      tags:
+        page.properties.Tags.multi_select.map((tag) => tag.name).join(", ") ||
+        null,
+      r2_image_url: null,
     }));
   } catch (error) {
     logger.error(ERROR_MESSAGES.TRANSFORM, error);

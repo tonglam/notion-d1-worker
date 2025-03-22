@@ -1,3 +1,6 @@
+import type { PropertyTypeValidation } from "../types";
+
+/** Required properties for Notion pages */
 export const REQUIRED_PROPERTIES = [
   "Title",
   "Category",
@@ -6,29 +9,7 @@ export const REQUIRED_PROPERTIES = [
   "Content Key",
 ] as const;
 
-export type RequiredProperty = (typeof REQUIRED_PROPERTIES)[number];
-
-export const PROPERTY_TYPE_MAP = {
-  Title: "title",
-  Category: "select",
-  Tags: "multi_select",
-  Author: "people",
-  "Content Key": "rich_text",
-  Excerpt: "rich_text",
-  Summary: "rich_text",
-  "Mins Read": "number",
-  "Image URL": "url",
-} as const;
-
-export type PropertyType =
-  (typeof PROPERTY_TYPE_MAP)[keyof typeof PROPERTY_TYPE_MAP];
-
-export interface PropertyTypeValidation {
-  property: keyof typeof PROPERTY_TYPE_MAP;
-  type: PropertyType;
-  required: boolean;
-}
-
+/** Validation rules for each property */
 export const PROPERTY_VALIDATIONS: PropertyTypeValidation[] = [
   { property: "Title", type: "title", required: true },
   { property: "Category", type: "select", required: true },

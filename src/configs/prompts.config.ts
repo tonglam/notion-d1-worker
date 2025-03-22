@@ -1,3 +1,5 @@
+import type { D1Post } from "../types/db.types";
+
 // Text Generation Prompts
 export const SUMMARY_PROMPT = (content: string): string =>
   `You are an expert summarizer. Your task is to create concise, informative summaries that capture the key points of technical articles. Please provide a concise summary (maximum 3 sentences) of the following technical article. Highlight the key technologies, concepts, and takeaways. Do NOT include "Summary:" or any other prefix in your response, just provide the summary directly:\n\n${content}`;
@@ -27,6 +29,22 @@ export const IMAGE_STYLE_CONFIG = {
   technicalParameters:
     "high-resolution, sharp details, professional vector-like quality",
 } as const;
+
+/**
+ * Cleans a prompt by removing quotes and trimming whitespace
+ */
+export const cleanPrompt = (prompt: string): string => {
+  return prompt.replace(/['"]/g, "").trim();
+};
+
+/**
+ * Generates an image prompt for a post using its metadata
+ */
+export const generateImagePrompt = (post: D1Post): string => {
+  const summary = post.summary?.substring(0, 200) || post.title;
+  const basePrompt = `Create a professional, striking image for an article titled "${post.title}" about ${post.category}. The article discusses: ${summary}`;
+  return cleanPrompt(basePrompt);
+};
 
 export const IMAGE_PROMPT = (cleanPrompt: string): string => {
   const subjectDescription = `a professional technical illustration representing the concept of "${cleanPrompt}" WITHOUT ANY TEXT OR LABELS`;

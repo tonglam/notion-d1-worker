@@ -2,6 +2,7 @@ import type {
   MultiSelectPropertyItemObjectResponse,
   NumberPropertyItemObjectResponse,
   PeoplePropertyItemObjectResponse,
+  RelationPropertyItemObjectResponse,
   RichTextPropertyItemObjectResponse,
   SelectPropertyItemObjectResponse,
   TitlePropertyItemObjectResponse,
@@ -9,19 +10,25 @@ import type {
 } from "@notionhq/client/build/src/api-endpoints";
 import { createValidationError } from "./errors.util";
 
+// Base type guard helper
+const isNotionProperty = (
+  prop: unknown,
+  type: string
+): prop is Record<string, unknown> => {
+  return (
+    typeof prop === "object" &&
+    prop !== null &&
+    "type" in prop &&
+    prop.type === type
+  );
+};
+
+// Property Type Guards
 /**
  * Type guard for title property
- * @param prop - Property to check
- * @returns Title property
- * @throws {ValidationError} If property is not a title
  */
 export const getTitle = (prop: unknown): TitlePropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "title"
-  ) {
+  if (isNotionProperty(prop, "title")) {
     return prop as TitlePropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a title");
@@ -29,17 +36,9 @@ export const getTitle = (prop: unknown): TitlePropertyItemObjectResponse => {
 
 /**
  * Type guard for select property
- * @param prop - Property to check
- * @returns Select property
- * @throws {ValidationError} If property is not a select
  */
 export const getSelect = (prop: unknown): SelectPropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "select"
-  ) {
+  if (isNotionProperty(prop, "select")) {
     return prop as SelectPropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a select");
@@ -47,19 +46,11 @@ export const getSelect = (prop: unknown): SelectPropertyItemObjectResponse => {
 
 /**
  * Type guard for multi-select property
- * @param prop - Property to check
- * @returns Multi-select property
- * @throws {ValidationError} If property is not a multi-select
  */
 export const getMultiSelect = (
   prop: unknown
 ): MultiSelectPropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "multi_select"
-  ) {
+  if (isNotionProperty(prop, "multi_select")) {
     return prop as MultiSelectPropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a multi-select");
@@ -67,17 +58,9 @@ export const getMultiSelect = (
 
 /**
  * Type guard for people property
- * @param prop - Property to check
- * @returns People property
- * @throws {ValidationError} If property is not a people
  */
 export const getPeople = (prop: unknown): PeoplePropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "people"
-  ) {
+  if (isNotionProperty(prop, "people")) {
     return prop as PeoplePropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a people");
@@ -85,19 +68,11 @@ export const getPeople = (prop: unknown): PeoplePropertyItemObjectResponse => {
 
 /**
  * Type guard for rich text property
- * @param prop - Property to check
- * @returns Rich text property
- * @throws {ValidationError} If property is not a rich text
  */
 export const getRichText = (
   prop: unknown
 ): RichTextPropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "rich_text"
-  ) {
+  if (isNotionProperty(prop, "rich_text")) {
     return prop as RichTextPropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a rich text");
@@ -105,17 +80,9 @@ export const getRichText = (
 
 /**
  * Type guard for number property
- * @param prop - Property to check
- * @returns Number property
- * @throws {ValidationError} If property is not a number
  */
 export const getNumber = (prop: unknown): NumberPropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "number"
-  ) {
+  if (isNotionProperty(prop, "number")) {
     return prop as NumberPropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a number");
@@ -123,18 +90,22 @@ export const getNumber = (prop: unknown): NumberPropertyItemObjectResponse => {
 
 /**
  * Type guard for URL property
- * @param prop - Property to check
- * @returns URL property
- * @throws {ValidationError} If property is not a URL
  */
 export const getUrl = (prop: unknown): UrlPropertyItemObjectResponse => {
-  if (
-    typeof prop === "object" &&
-    prop &&
-    "type" in prop &&
-    prop.type === "url"
-  ) {
+  if (isNotionProperty(prop, "url")) {
     return prop as UrlPropertyItemObjectResponse;
   }
   throw createValidationError("Property must be a URL");
+};
+
+/**
+ * Type guard for relation property
+ */
+export const getRelation = (
+  prop: unknown
+): RelationPropertyItemObjectResponse => {
+  if (isNotionProperty(prop, "relation")) {
+    return prop as RelationPropertyItemObjectResponse;
+  }
+  throw createValidationError("Property must be a relation");
 };

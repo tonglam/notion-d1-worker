@@ -1,18 +1,15 @@
 import type {
   PageObjectResponse,
-  PartialUserObjectResponse,
   RichTextItemResponse,
-  UserObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
-import { DEEPSEEK_API } from "../configs/constants.config";
+import { DEEPSEEK_API } from "../configs/api.config";
 import { PROPERTY_VALIDATIONS } from "../configs/validation.config";
 import type {
-  Env,
   NotionPage,
   NotionPageProperties,
-  NotionPerson,
-  NotionRichText,
-} from "../types/types";
+  RichTextMapper,
+  UserMapper,
+} from "../types/notion.types";
 import { createValidationError } from "./errors.util";
 import {
   getMultiSelect,
@@ -24,10 +21,29 @@ import {
   getUrl,
 } from "./type-guards.util";
 
+// Data Mapping Functions
+/**
+ * Map a rich text item to our internal format
+ */
+const mapRichTextItem: RichTextMapper = (item) => ({
+  plain_text: item.plain_text,
+  href: item.href,
+  annotations: item.annotations,
+});
+
+/**
+ * Map a user to our internal format
+ */
+const mapUser: UserMapper = (user) => ({
+  id: user.id,
+  name: "name" in user ? user.name : null,
+  avatar_url: "avatar_url" in user ? user.avatar_url : null,
+  email: "email" in user && typeof user.email === "string" ? user.email : null,
+});
+
+// Property Validation Functions
 /**
  * Validate required properties in a Notion page
- * @param properties - Page properties
- * @throws {ValidationError} If required properties are missing
  */
 const validateRequiredProperties = (
   properties: PageObjectResponse["properties"]
@@ -46,35 +62,7 @@ const validateRequiredProperties = (
 };
 
 /**
- * Map a rich text item to our internal format
- * @param item - Rich text item
- * @returns Mapped rich text item
- */
-const mapRichTextItem = (item: RichTextItemResponse): NotionRichText => ({
-  plain_text: item.plain_text,
-  href: item.href,
-  annotations: item.annotations,
-});
-
-/**
- * Map a user to our internal format
- * @param user - User object
- * @returns Mapped user
- */
-const mapUser = (
-  user: UserObjectResponse | PartialUserObjectResponse
-): NotionPerson => ({
-  id: user.id,
-  name: "name" in user ? user.name : null,
-  avatar_url: "avatar_url" in user ? user.avatar_url : null,
-  email: "email" in user && typeof user.email === "string" ? user.email : null,
-});
-
-/**
  * Transform Notion properties to our internal format
- * @param props - Page properties
- * @returns Transformed properties
- * @throws {ValidationError} If property types are invalid
  */
 const transformProperties = (
   props: PageObjectResponse["properties"]
@@ -91,6 +79,7 @@ const transformProperties = (
     }
   }
 
+  // Extract and validate properties
   const titleProp = getTitle(props.Title);
   const categoryProp = getSelect(props.Category);
   const tagsProp = getMultiSelect(props.Tags);
@@ -105,7 +94,8 @@ const transformProperties = (
     : undefined;
   const contentKeyProp = getRichText(props["Content Key"]);
 
-  const result: NotionPageProperties = {
+  // Transform to internal format
+  return {
     Title: {
       title: Array.isArray(titleProp.title)
         ? titleProp.title.map((t) => ({ plain_text: t.plain_text }))
@@ -152,16 +142,27 @@ const transformProperties = (
         ? contentKeyProp.rich_text.map(mapRichTextItem)
         : [mapRichTextItem(contentKeyProp.rich_text as RichTextItemResponse)],
     },
+    Parent: {
+      relation: (props.Parent?.type === "relation"
+        ? props.Parent.relation
+        : []) as Array<{ id: string }>,
+    },
+    "MIT Parent": {
+      relation: (props["MIT Parent"]?.type === "relation"
+        ? props["MIT Parent"].relation
+        : []) as Array<{ id: string }>,
+    },
+    "Child Pages": {
+      relation: (props["Child Pages"]?.type === "relation"
+        ? props["Child Pages"].relation
+        : []) as Array<{ id: string }>,
+    },
   };
-
-  return result;
 };
 
+// Public Validation Functions
 /**
  * Validate a Notion page
- * @param page - Page to validate
- * @returns Validated page
- * @throws {ValidationError} If page is invalid
  */
 export const validateNotionPage = (page: PageObjectResponse): NotionPage => {
   try {
@@ -183,30 +184,7 @@ export const validateNotionPage = (page: PageObjectResponse): NotionPage => {
 };
 
 /**
- * Validate environment variables
- * @param env - Environment variables
- * @throws {ValidationError} If required variables are missing
- */
-export const validateEnv = (env: Env): void => {
-  const requiredEnvVars = [
-    "NOTION_TOKEN",
-    "NOTION_ROOT_PAGE_ID",
-    "DASHSCOPE_API_KEY",
-    "DEEPSEEK_API_KEY",
-  ];
-  const missing = requiredEnvVars.filter((key) => !env[key as keyof Env]);
-
-  if (missing.length > 0) {
-    throw createValidationError(
-      `Missing required environment variables: ${missing.join(", ")}`
-    );
-  }
-};
-
-/**
  * Validate token limits for AI operations
- * @param content - Content to validate
- * @throws {ValidationError} If content exceeds token limits
  */
 export const validateTokenLimits = (content: string): void => {
   // Rough estimate: 1 token ≈ 4 characters

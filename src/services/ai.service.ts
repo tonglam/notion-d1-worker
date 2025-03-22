@@ -3,44 +3,39 @@ import {
   SUMMARY_PROMPT,
   TAGS_PROMPT,
 } from "../configs/prompts.config";
-import type { GenerationResult, ImageResult } from "../types/types";
+import type { GenerationResult, ImageResult } from "../types";
+import type { D1Post } from "../types/db.types";
 import { createAIProviderError } from "../utils/errors.util";
 import { createLogger } from "../utils/logger.util";
-import { validateTokenLimits } from "../utils/validation.util";
 import * as dashscope from "./ai-providers/dashscope.provider";
 import * as deepseek from "./ai-providers/deepseek.provider";
-import { updatePost } from "./d1.service";
+import { updatePost } from "./db.service";
+import { uploadImageFromUrl } from "./r2.service";
 
 const logger = createLogger("AIService");
 
 /**
  * Generates a featured image using DashScope.
  * Handles task creation and database updates.
- * @param prompt - Input prompt for image generation
- * @param apiKey - DashScope API key
- * @param postId - ID of the post to update
- * @param db - D1 database instance
+ * @param post - Post to generate image for
  * @returns Generation result with task ID or error
  */
 export const generateImage = async (
-  prompt: string,
-  apiKey: string,
-  postId: string,
-  db: D1Database
+  post: D1Post
 ): Promise<GenerationResult<ImageResult>> => {
   try {
-    const result = await dashscope.createImageTask(prompt, apiKey);
+    const result = await dashscope.createImageTask(post);
 
     if (result.error || !result.taskId) {
       logger.warn("Failed to create image task", {
-        postId,
+        postId: post.id,
         error: result.error,
       });
       return { error: result.error || "Failed to create task" };
     }
 
     // Store task ID in D1
-    await updatePost(db, postId, {
+    await updatePost(post.id, {
       image_task_id: result.taskId,
     });
 
@@ -59,19 +54,15 @@ export const generateImage = async (
  * Checks the status of an image generation task.
  * Updates the post when the image is ready.
  * @param taskId - Task ID to check
- * @param apiKey - DashScope API key
  * @param postId - ID of the post to update
- * @param db - D1 database instance
  * @returns Generation result with status or error
  */
 export const checkImageStatus = async (
   taskId: string,
-  apiKey: string,
-  postId: string,
-  db: D1Database
+  postId: string
 ): Promise<GenerationResult<ImageResult>> => {
   try {
-    const result = await dashscope.getTaskStatus(taskId, apiKey);
+    const result = await dashscope.checkTaskStatus(taskId);
 
     if (result.status === "SUCCEEDED" && result.imageUrl) {
       logger.info("Image generation completed", {
@@ -80,14 +71,33 @@ export const checkImageStatus = async (
         imageUrl: result.imageUrl,
       });
 
-      await updatePost(db, postId, {
+      // Upload to R2
+      const r2Key = `images/${taskId}.jpg`;
+      const r2Result = await uploadImageFromUrl(result.imageUrl, r2Key);
+
+      if (!r2Result.success || !r2Result.url) {
+        logger.error("Failed to upload image to R2", {
+          postId,
+          taskId,
+          error: r2Result.error,
+        });
+        return {
+          error: r2Result.error || "Failed to upload image to R2",
+          data: { task_id: taskId },
+        };
+      }
+
+      // Update post with both original and R2 URLs
+      await updatePost(postId, {
         image_url: result.imageUrl,
+        r2_image_url: r2Result.url,
         image_task_id: null,
       });
 
       return {
         data: {
           image_url: result.imageUrl,
+          r2_image_url: r2Result.url,
           task_id: taskId,
         },
       };
@@ -127,14 +137,7 @@ export const generatePostSummary = async (
   content: string
 ): Promise<GenerationResult<{ summary: string }>> => {
   try {
-    validateTokenLimits(content);
-
-    logger.debug("Generating post summary", {
-      contentLength: content.length,
-    });
-
     const response = await deepseek.generate(SUMMARY_PROMPT(content));
-
     return { data: { summary: response.text } };
   } catch (error) {
     logger.error("Failed to generate summary:", error);
@@ -152,12 +155,10 @@ export const generatePostSummary = async (
  */
 export const generatePostTags = async (
   content: string,
-  maxKeywords = 5
+  maxKeywords = 3
 ): Promise<GenerationResult<{ tags: string }>> => {
   try {
-    validateTokenLimits(content);
-
-    if (maxKeywords <= 0 || maxKeywords > 10) {
+    if (maxKeywords <= 0 || maxKeywords > 5) {
       throw createAIProviderError("Max keywords must be between 1 and 10");
     }
 
@@ -185,12 +186,6 @@ export const estimateReadingTime = async (
   content: string
 ): Promise<GenerationResult<{ mins_read: number }>> => {
   try {
-    validateTokenLimits(content);
-
-    logger.debug("Estimating reading time", {
-      contentLength: content.length,
-    });
-
     const response = await deepseek.generate(READING_TIME_PROMPT(content));
     const mins = parseInt(response.text, 10);
 

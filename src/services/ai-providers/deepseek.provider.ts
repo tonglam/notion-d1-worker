@@ -1,7 +1,7 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { generateText } from "ai";
-import { DEEPSEEK_API } from "../../configs/constants.config";
-import type { DeepSeekResult } from "../../types/types";
+import { DEEPSEEK_API } from "../../configs/api.config";
+import type { DeepSeekResult } from "../../types";
 import { createAIProviderError } from "../../utils/errors.util";
 import { createLogger } from "../../utils/logger.util";
 import { validateTokenLimits } from "../../utils/validation.util";
@@ -18,9 +18,6 @@ const logger = createLogger("DeepSeekProvider");
  */
 export async function generate(prompt: string): Promise<DeepSeekResult> {
   try {
-    logger.info("Generating text with DeepSeek", {
-      promptLength: prompt.length,
-    });
     validateTokenLimits(prompt);
 
     const { text, reasoning } = await generateText({
@@ -37,6 +34,6 @@ export async function generate(prompt: string): Promise<DeepSeekResult> {
     return { text, reasoning };
   } catch (error) {
     logger.error("Failed to generate text with DeepSeek", { error });
-    throw createAIProviderError("Failed to generate text with DeepSeek", error);
+    throw createAIProviderError("Failed to generate text", "DeepSeek", error);
   }
 }

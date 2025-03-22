@@ -36,3 +36,6 @@ coverage/
 
 # Cloudflare
 .dev.vars
+
+# Worker Configuration
+worker.toml

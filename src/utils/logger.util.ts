@@ -1,19 +1,5 @@
-import type { LogLevel, LogMessage, Logger } from "../types/types";
+import type { LogLevel, LogMessage, Logger } from "../types";
 import { isNotionSyncError } from "./errors.util";
-
-/** Get the minimum log level from environment variables */
-const getMinLogLevel = (): LogLevel => {
-  const level = (process.env.LOG_LEVEL || "info").toLowerCase() as LogLevel;
-  return ["debug", "info", "warn", "error"].includes(level) ? level : "info";
-};
-
-/** Map of log level priorities */
-const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
 
 /**
  * Format a log message with context and metadata
@@ -74,11 +60,6 @@ const log = (
   message: string,
   metadata?: Record<string, unknown>
 ): void => {
-  const minLevel = getMinLogLevel();
-  if (LOG_LEVEL_PRIORITY[level] < LOG_LEVEL_PRIORITY[minLevel]) {
-    return;
-  }
-
   const logMessage = formatMessage(level, context, message, metadata);
   const formattedMessage = `[${
     logMessage.timestamp

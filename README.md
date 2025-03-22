@@ -11,9 +11,16 @@ This project creates a bridge between Notion and Cloudflare D1, allowing you to:
 3. Serve content globally with ultra-low latency
 4. Stay within Cloudflare's free tier limits
 5. Generate AI-powered content enhancements:
+
    - Automatic content summarization
    - SEO-optimized tag generation
-   - Technical illustrations for posts
+   - Reading time estimation
+   - Technical illustrations (stored in Cloudflare R2)
+
+6. Maintain content integrity through:
+   - Automated schema validation of Notion properties
+   - Batch processing (100 posts/day) within free tier limits
+   - Atomic updates to prevent partial sync failures
 
 ## Tech Stack
 
@@ -21,6 +28,7 @@ This project creates a bridge between Notion and Cloudflare D1, allowing you to:
 - **Infrastructure**:
   - [Cloudflare Workers](https://workers.cloudflare.com/) - Serverless edge computing
   - [Cloudflare D1](https://developers.cloudflare.com/d1/) - SQLite at the edge
+  - [Cloudflare R2](https://developers.cloudflare.com/r2/) - Object storage for generated images
 - **API Integration**:
   - [Notion API](https://developers.notion.com/) - Content management
   - [Deepseek](https://deepseek.com) - AI text generation
@@ -37,6 +45,11 @@ This project creates a bridge between Notion and Cloudflare D1, allowing you to:
    - Fetch published content from Notion
    - Transform content to D1-compatible format
    - Sync to Cloudflare D1 database
+   - Generate AI-powered enhancements:
+     - Summaries
+     - SEO tags
+     - Reading time estimates
+     - Technical illustrations (stored in R2)
 3. **Content Delivery**: Content is served from Cloudflare's edge network
 
 ## Workflow & Architecture
@@ -49,28 +62,28 @@ sequenceDiagram
     participant Notion
     participant Worker
     participant D1
+    participant R2
     participant Client
 
     %% Content Creation
     Author->>Notion: Create/Update Content
-    Note over Notion: Content stored in<br/>Notion Database
 
-    %% Sync Process (Daily)
+    %% Sync Process
     rect rgb(200, 220, 240)
-        Note over Worker: Daily Sync Process
-        Worker->>Notion: Fetch Published Pages
+        Worker->>Notion: Fetch Pages
         Notion-->>Worker: Return Pages
-        Worker->>Worker: Transform to D1 Format
-        Worker->>D1: Clear Existing Data
-        Worker->>D1: Batch Insert (100 per batch)
-        D1-->>Worker: Confirm Insert
+        Worker->>Worker: Transform + AI Processing
+        Worker->>D1: Upsert Posts
+        Worker->>R2: Store Generated Images
     end
 
     %% Content Delivery
-    Client->>Worker: Request Content
-    Worker->>D1: Query Data
-    D1-->>Worker: Return Data
-    Worker-->>Client: Serve Content
+    Client->>Worker: Request
+    Worker->>D1: Query
+    D1-->>Worker: Data
+    Worker->>R2: Images
+    R2-->>Worker: Files
+    Worker-->>Client: Response
 ```
 
 ## Prerequisites
@@ -84,7 +97,7 @@ Before you begin, ensure you have:
    - [Deepseek API](https://deepseek.com) for text generation
    - [DashScope API](https://dashscope.aliyun.com) for image generation
 
-## Quick Start
+## Get Start
 
 1. **Clone and Install**
 
@@ -160,8 +173,9 @@ notion-d1-worker/
 │   ├── index.ts      # Entry point
 │   ├── services/     # Core services
 │   │   ├── notion.ts # Notion integration
-│   │   ├── d1.ts    # D1 database operations
-│   │   ├── sync.ts  # Sync orchestration
+│   │   ├── d1.ts     # D1 database operations
+│   │   ├── r2.ts     # R2 image storage operations
+│   │   ├── sync.ts   # Sync orchestration
 │   │   ├── ai.ts    # AI service integration
 │   │   └── ai/      # AI-specific modules
 │   ├── types.ts      # Type definitions
@@ -193,28 +207,17 @@ The project includes several AI-powered enhancements:
    - Clean, minimalist style
    - Text-free visual representations
 
-## Limitations & Considerations
+## Image Handling
 
-- Runs once per day (configurable)
-- Processes posts in batches of 100 (free tier limit)
-- Only syncs published posts
-- Uses clear-and-replace sync strategy
-- Operates within service limits:
-  - 100,000 D1 reads per day
-  - 1,000 D1 writes per day
-  - 100,000 Worker requests per day
-  - AI service rate limits apply
-  - Image generation quotas based on DashScope plan
-
-## Security Best Practices
-
-- Never commit `.env` or `.dev.vars` files
-- Use `wrangler secret` for production credentials
-- Keep API tokens secure
-- Follow least-privilege principle for integrations
-- Regularly rotate API tokens
-- Secure AI service credentials
-- Monitor AI service usage and costs
+- Generated illustrations stored in Cloudflare R2
+- Two image URLs preserved:
+  1. Original image URL from Notion
+  2. R2-optimized version (webp format)
+- Image generation workflow:
+  1. Create task via DashScope
+  2. Check status daily at 6:00 AM UTC
+  3. Store successful results in R2
+  4. Retry failed tasks automatically
 
 ## License
 

@@ -1,5 +1,6 @@
-import type { ErrorCode, SyncError } from "../types/types";
+import type { ErrorCode, SyncError } from "../types";
 
+// Base Error Creation
 /**
  * Creates a new error with the specified parameters
  * @param message - Error message
@@ -21,6 +22,7 @@ const createError = (
   return error;
 };
 
+// Core System Errors
 /**
  * Creates a validation error
  * @param message - Error message
@@ -34,6 +36,18 @@ export const createValidationError = (
   createError(message, "VALIDATION_ERROR", cause, "ValidationError");
 
 /**
+ * Creates a database error
+ * @param message - Error message
+ * @param cause - Optional cause of the error
+ * @returns A new database error
+ */
+export const createDatabaseError = (
+  message: string,
+  cause?: unknown
+): SyncError => createError(message, "DATABASE_ERROR", cause, "DatabaseError");
+
+// API Integration Errors
+/**
  * Creates a Notion API error
  * @param message - Error message
  * @param cause - Optional cause of the error
@@ -44,17 +58,6 @@ export const createNotionAPIError = (
   cause?: unknown
 ): SyncError =>
   createError(message, "NOTION_API_ERROR", cause, "NotionAPIError");
-
-/**
- * Creates a database error
- * @param message - Error message
- * @param cause - Optional cause of the error
- * @returns A new database error
- */
-export const createDatabaseError = (
-  message: string,
-  cause?: unknown
-): SyncError => createError(message, "DATABASE_ERROR", cause, "DatabaseError");
 
 /**
  * Creates a DeepSeek API error
@@ -94,15 +97,25 @@ export const createTokenLimitError = (
 /**
  * Creates an AI provider error
  * @param message - Error message
+ * @param provider - Optional provider name (e.g., 'DeepSeek', 'DashScope')
  * @param cause - Optional cause of the error
  * @returns A new AI provider error
  */
 export const createAIProviderError = (
   message: string,
+  provider?: string,
   cause?: unknown
-): SyncError =>
-  createError(message, "AI_PROVIDER_ERROR", cause, "AIProviderError");
+): SyncError => {
+  const providerName = provider ? `[${provider}] ` : "";
+  return createError(
+    `${providerName}${message}`,
+    "AI_PROVIDER_ERROR",
+    cause,
+    provider ? `${provider}Error` : "AIProviderError"
+  );
+};
 
+// Error Handling Utilities
 /**
  * Type guard to check if an error is a SyncError
  * @param error - Error to check

@@ -1,124 +1,88 @@
-import { DASHSCOPE_API } from "../../configs/constants.config";
+/// <reference types="@cloudflare/workers-types" />
+
+import { DASHSCOPE_API } from "@/configs/api.config";
 import {
   IMAGE_NEGATIVE_PROMPT,
-  IMAGE_PROMPT,
+  generateImagePrompt,
 } from "../../configs/prompts.config";
 import type {
   CreateTaskResult,
   DashScopeResponse,
+  DashScopeTaskStatusResponse,
   TaskStatusResult,
-} from "../../types/types";
-import {
-  createDashScopeError,
-  createValidationError,
-} from "../../utils/errors.util";
+} from "../../types/ai.types";
+import type { D1Post } from "../../types/db.types";
+import { createAIProviderError } from "../../utils/errors.util";
 import { createLogger } from "../../utils/logger.util";
-import { RateLimiter } from "../../utils/rate-limiter.util";
+import { withRateLimit } from "../../utils/rate-limiter.util";
 
 const logger = createLogger("DashScopeProvider");
 
-// Rate limits for DashScope API
-const RATE_LIMITS = {
-  MAX_REQUESTS_PER_SECOND: 5,
-  MAX_REQUESTS_PER_MINUTE: 100,
-} as const;
-
-const rateLimiter = new RateLimiter({
-  maxRequestsPerSecond: RATE_LIMITS.MAX_REQUESTS_PER_SECOND,
-  maxRequestsPerMinute: RATE_LIMITS.MAX_REQUESTS_PER_MINUTE,
-});
-
-/**
- * Validates task ID for status checks
- * @param taskId - Task ID to validate
- * @throws {ValidationError} If task ID is invalid
- */
-const validateTaskId = (taskId: string): void => {
-  if (!taskId) {
-    throw createValidationError("Task ID is required");
-  }
-
-  if (!/^[a-zA-Z0-9-]+$/.test(taskId)) {
-    throw createValidationError("Invalid task ID format");
-  }
-};
-
-/**
- * Processes API response and extracts task ID
- * @param response - API response
- * @returns Task ID
- * @throws {DashScopeError} If response is invalid
- */
-const processTaskResponse = async (response: Response): Promise<string> => {
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw createDashScopeError(
-      `API request failed with status ${response.status}: ${errorText}`
-    );
-  }
-
-  const data = (await response.json()) as DashScopeResponse;
-  const taskId = data?.output?.task_id;
-
-  if (!taskId) {
-    throw createDashScopeError("No task ID returned from API");
-  }
-
-  return taskId;
-};
+const rateLimitedFetch = <T>(fn: () => Promise<T>): Promise<T> =>
+  withRateLimit(fn, {
+    maxRequestsPerSecond: DASHSCOPE_API.LIMITS.MAX_REQUESTS_PER_SECOND,
+    maxRequestsPerMinute: DASHSCOPE_API.LIMITS.MAX_REQUESTS_PER_MINUTE,
+  });
 
 /**
  * Creates an image generation task using DashScope's API.
  * Returns the task ID for status tracking.
- * @param prompt - Input prompt for image generation
- * @param size - Optional image size (default from config)
+ * @param post - D1Post object containing post data
  * @returns Task creation result
  * @throws {DashScopeError} If API call fails
  */
 export const createImageTask = async (
-  prompt: string,
-  apiKey: string,
-  size = DASHSCOPE_API.DEFAULT_CONFIG.IMAGE.SIZE
+  post: D1Post
 ): Promise<CreateTaskResult> => {
   try {
-    const enhancedPrompt = IMAGE_PROMPT(prompt.replace(/['"]/g, "").trim());
+    await rateLimitedFetch(() => Promise.resolve());
 
-    logger.debug("Creating image task", {
-      size,
-      promptLength: enhancedPrompt.length,
-    });
-
-    const response = await rateLimiter.wrap(() =>
-      fetch(
-        `${DASHSCOPE_API.BASE_URL}${DASHSCOPE_API.ENDPOINTS.IMAGE_SYNTHESIS}`,
-        {
-          method: "POST",
-          headers: {
-            [DASHSCOPE_API.HEADERS.ASYNC]: "enable",
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": DASHSCOPE_API.HEADERS.CONTENT_TYPE,
+    const response = await fetch(
+      `${DASHSCOPE_API.BASE_URL}${DASHSCOPE_API.ENDPOINTS.IMAGE_SYNTHESIS}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: DASHSCOPE_API.MODELS.IMAGE,
+          input: {
+            prompt: generateImagePrompt(post),
+            negative_prompt: IMAGE_NEGATIVE_PROMPT,
           },
-          body: JSON.stringify({
-            model: DASHSCOPE_API.MODELS.IMAGE,
-            input: {
-              prompt: enhancedPrompt,
-              negative_prompt: IMAGE_NEGATIVE_PROMPT,
-            },
-            parameters: {
-              size,
-              n: DASHSCOPE_API.DEFAULT_CONFIG.IMAGE.COUNT,
-            },
-          }),
-        }
-      )
+          parameters: {
+            size: DASHSCOPE_API.DEFAULT_CONFIG.IMAGE.SIZE,
+            n: DASHSCOPE_API.DEFAULT_CONFIG.IMAGE.COUNT,
+          },
+        }),
+      }
     );
 
-    const taskId = await processTaskResponse(response);
-    logger.debug("Image task created", { taskId });
+    if (!response.ok) {
+      throw createAIProviderError(
+        `Failed to create task: ${response.status} ${response.statusText}`,
+        "DashScope"
+      );
+    }
 
-    return { taskId };
+    const data = (await response.json()) as DashScopeResponse;
+
+    if ("code" in data) {
+      throw createAIProviderError(`${data.code}: ${data.message}`, "DashScope");
+    }
+
+    if (!("output" in data) || !data.output.task_id) {
+      throw createAIProviderError(
+        "Unexpected task status in creation response",
+        "DashScope"
+      );
+    }
+
+    return { taskId: data.output.task_id };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     logger.error("Failed to create image task", { error: errorMessage });
     return { error: errorMessage };
   }
@@ -126,70 +90,80 @@ export const createImageTask = async (
 
 /**
  * Checks the status of an image generation task.
- * Returns the task status and image URL if ready.
  * @param taskId - Task ID to check
- * @param apiKey - DashScope API key
- * @returns Task status result
+ * @returns Task status and image URL if successful
  * @throws {DashScopeError} If API call fails
  */
-export const getTaskStatus = async (
-  taskId: string,
-  apiKey: string
+export const checkTaskStatus = async (
+  taskId: string
 ): Promise<TaskStatusResult> => {
   try {
-    validateTaskId(taskId);
-    logger.debug("Checking task status", { taskId });
+    if (!taskId) {
+      throw createAIProviderError("Invalid task ID", "DashScope");
+    }
 
-    const response = await rateLimiter.wrap(() =>
-      fetch(
-        `${DASHSCOPE_API.BASE_URL}${DASHSCOPE_API.ENDPOINTS.TASK_STATUS(
-          taskId
-        )}`,
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-        }
-      )
+    await rateLimitedFetch(() => Promise.resolve());
+
+    const response = await fetch(
+      `${DASHSCOPE_API.BASE_URL}${DASHSCOPE_API.ENDPOINTS.TASK_STATUS(taskId)}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
+        },
+      }
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw createDashScopeError(
-        `API request failed with status ${response.status}: ${errorText}`
+      throw createAIProviderError(
+        `Failed to check task status: ${response.status} ${response.statusText}`,
+        "DashScope"
       );
     }
 
     const data = (await response.json()) as DashScopeResponse;
 
-    if (data?.output?.results?.[0]?.url) {
-      const imageUrl = data.output.results[0].url;
-      logger.debug("Task completed successfully", { taskId, imageUrl });
-      return {
-        status: "SUCCEEDED",
-        imageUrl,
-      };
+    if ("code" in data) {
+      throw createAIProviderError(`${data.code}: ${data.message}`, "DashScope");
     }
 
-    if (data?.output?.task_status === "FAILED") {
-      const errorMessage = data.output.error || "Task failed";
-      logger.warn("Task failed", { taskId, error: errorMessage });
-      return {
-        status: "FAILED",
-        error: errorMessage,
-      };
+    if (!("output" in data)) {
+      throw createAIProviderError("Invalid response format", "DashScope");
     }
 
-    logger.debug("Task still pending", { taskId });
-    return {
-      status: "PENDING",
-    };
+    const taskStatusResponse = data as DashScopeTaskStatusResponse;
+    const { task_status, results } = taskStatusResponse.output;
+
+    switch (task_status) {
+      case "SUCCEEDED":
+        if (!results || !results[0]?.url) {
+          return {
+            status: "FAILED",
+            error: "No image URL in successful response",
+          };
+        }
+        return {
+          status: "SUCCEEDED",
+          imageUrl: results[0].url,
+        };
+      case "FAILED":
+        return {
+          status: "FAILED",
+          error:
+            taskStatusResponse.output.error ||
+            "Task failed without error message",
+        };
+      case "PENDING":
+        return { status: "PENDING" };
+      default:
+        return {
+          status: "FAILED",
+          error: `Unknown task status: ${task_status}`,
+        };
+    }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error("Failed to check task status", {
-      taskId,
-      error: errorMessage,
-    });
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     return {
       status: "FAILED",
       error: errorMessage,

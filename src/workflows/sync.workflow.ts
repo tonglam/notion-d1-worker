@@ -1,66 +1,77 @@
-import { LOG_MESSAGES } from "../configs/constants.config";
-import { clearPosts, getPostCount, insertPosts } from "../services/d1.service";
+import { getPostTimestamps, upsertPosts } from "@/services/db.service";
 import {
   fetchPublishedPosts,
+  fetchRawPages,
   transformToD1Posts,
 } from "../services/notion.service";
-import type { Env, SyncResult } from "../types/types";
+import type { D1Post, SyncResult } from "../types";
 import { handleError } from "../utils/errors.util";
 import { createLogger } from "../utils/logger.util";
-import { validateEnv } from "../utils/validation.util";
 
 const logger = createLogger("SyncWorkflow");
 
 /**
  * Main sync workflow that runs daily to sync posts from Notion to D1.
- * This workflow:
- * 1. Fetches posts from Notion
- * 2. Transforms them to D1 format
- * 3. Updates the D1 database
  */
-export const syncWorkflow = async (env: Env): Promise<SyncResult> => {
-  logger.info(LOG_MESSAGES.SYNC_START);
+export const syncWorkflow = async (): Promise<SyncResult> => {
+  logger.info("Starting sync workflow");
 
   try {
-    validateEnv(env);
+    const pages = await fetchPublishedPosts();
+    if (pages.length === 0) {
+      logger.info("No published posts found in Notion");
+      return { success: true, postsProcessed: 0 };
+    }
 
-    // Get current post count for comparison
-    const beforeCount = await getPostCount(env.DB);
+    logger.info(`Fetched ${pages.length} published posts from Notion`);
 
-    // Fetch posts from Notion
-    const notionPages = await fetchPublishedPosts(
-      env.NOTION_TOKEN,
-      env.NOTION_ROOT_PAGE_ID
+    // Get existing posts timestamps from D1
+    const existingPosts = await getPostTimestamps();
+
+    // Create a map of existing posts for quick lookup
+    const existingPostsMap = new Map(
+      existingPosts.map((post) => [post.id, post.notion_last_edited_at])
     );
 
-    // Transform to D1 format
-    const posts = transformToD1Posts(notionPages);
+    // Get raw pages and transform them
+    const rawPages = await fetchRawPages();
+    const notionPosts = transformToD1Posts(rawPages);
 
-    // Clear existing posts
-    await clearPosts(env.DB);
+    // Filter posts that need processing (new or updated)
+    const postsToProcess = notionPosts.filter((post: D1Post) => {
+      const existingLastEdited = existingPostsMap.get(post.id);
+      return (
+        !existingLastEdited || existingLastEdited !== post.notion_last_edited_at
+      );
+    });
 
-    // Insert new posts
-    await insertPosts(env.DB, posts);
+    if (postsToProcess.length === 0) {
+      logger.info("No posts need updating");
+      return { success: true, postsProcessed: 0 };
+    }
 
-    // Get new post count
-    const afterCount = await getPostCount(env.DB);
+    logger.info(`Processing ${postsToProcess.length} new or updated posts`);
 
-    logger.info(
-      `Sync completed. Before: ${beforeCount} posts, After: ${afterCount} posts`
-    );
+    // Pass existing IDs to upsertPosts to avoid redundant DB query
+    const existingIds = new Set(existingPostsMap.keys());
+    await upsertPosts(postsToProcess, existingIds);
 
     return {
       success: true,
-      postsProcessed: posts.length,
+      postsProcessed: postsToProcess.length,
     };
   } catch (error) {
     const syncError = handleError(error);
-    logger.error("Sync failed", syncError);
+    logger.error("Sync workflow failed", {
+      error: syncError.message,
+      code: syncError.code,
+      cause: syncError.cause,
+    });
 
     return {
       success: false,
       postsProcessed: 0,
-      error: String(syncError),
+      error: syncError.message,
     };
   }
 };

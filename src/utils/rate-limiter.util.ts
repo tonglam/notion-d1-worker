@@ -1,71 +1,63 @@
-import { createLogger } from "./logger.util";
+import type { RateLimiterOptions, RequestRecord } from "../types";
 
-const logger = createLogger("RateLimiter");
+// State management (using closures to maintain state)
+let requestsPerSecond: RequestRecord[] = [];
+let requestsPerMinute: RequestRecord[] = [];
 
-interface RateLimiterOptions {
-  maxRequestsPerSecond: number;
-  maxRequestsPerMinute: number;
-}
+/**
+ * Clean old requests from tracking arrays
+ */
+const cleanOldRequests = (): void => {
+  const now = Date.now();
+  requestsPerSecond = requestsPerSecond.filter(
+    (req) => now - req.timestamp < 1000
+  );
+  requestsPerMinute = requestsPerMinute.filter(
+    (req) => now - req.timestamp < 60000
+  );
+};
 
-interface RequestRecord {
-  timestamp: number;
-}
+/**
+ * Create a delay promise
+ */
+const delay = async (ms: number): Promise<void> => {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};
 
-export class RateLimiter {
-  private requestsPerSecond: RequestRecord[] = [];
-  private requestsPerMinute: RequestRecord[] = [];
-  private readonly options: RateLimiterOptions;
+/**
+ * Wait until rate limits allow a new request
+ */
+export const waitForAvailability = async (
+  options: RateLimiterOptions
+): Promise<void> => {
+  while (true) {
+    cleanOldRequests();
 
-  constructor(options: RateLimiterOptions) {
-    this.options = options;
-  }
+    const secondWindow = requestsPerSecond.length;
+    const minuteWindow = requestsPerMinute.length;
 
-  private cleanOldRequests(): void {
-    const now = Date.now();
-    this.requestsPerSecond = this.requestsPerSecond.filter(
-      (req) => now - req.timestamp < 1000
-    );
-    this.requestsPerMinute = this.requestsPerMinute.filter(
-      (req) => now - req.timestamp < 60000
-    );
-  }
-
-  private async delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  public async waitForAvailability(): Promise<void> {
-    while (true) {
-      this.cleanOldRequests();
-
-      const now = Date.now();
-      const secondWindow = this.requestsPerSecond.length;
-      const minuteWindow = this.requestsPerMinute.length;
-
-      if (
-        secondWindow < this.options.maxRequestsPerSecond &&
-        minuteWindow < this.options.maxRequestsPerMinute
-      ) {
-        break;
-      }
-
-      logger.debug("Rate limit reached, waiting", {
-        secondWindow,
-        minuteWindow,
-        maxRequestsPerSecond: this.options.maxRequestsPerSecond,
-        maxRequestsPerMinute: this.options.maxRequestsPerMinute,
-      });
-
-      await this.delay(100);
+    if (
+      secondWindow < options.maxRequestsPerSecond &&
+      minuteWindow < options.maxRequestsPerMinute
+    ) {
+      break;
     }
 
-    const request: RequestRecord = { timestamp: Date.now() };
-    this.requestsPerSecond.push(request);
-    this.requestsPerMinute.push(request);
+    await delay(100);
   }
 
-  public async wrap<T>(fn: () => Promise<T>): Promise<T> {
-    await this.waitForAvailability();
-    return fn();
-  }
-}
+  const request: RequestRecord = { timestamp: Date.now() };
+  requestsPerSecond.push(request);
+  requestsPerMinute.push(request);
+};
+
+/**
+ * Wrap a function with rate limiting
+ */
+export const withRateLimit = async <T>(
+  fn: () => Promise<T>,
+  options: RateLimiterOptions
+): Promise<T> => {
+  await waitForAvailability(options);
+  return fn();
+};

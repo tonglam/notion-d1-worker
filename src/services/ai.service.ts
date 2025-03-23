@@ -52,73 +52,44 @@ export const generateImage = async (
 
 /**
  * Checks the status of an image generation task.
- * Updates the post when the image is ready.
- * @param taskId - Task ID to check
- * @param postId - ID of the post to update
- * @returns Generation result with status or error
+ * If complete, uploads the image to R2 and updates the post.
+ * @param post - Post to check image status for
+ * @returns Task status result or error
  */
 export const checkImageStatus = async (
-  taskId: string,
-  postId: string
+  post: D1Post
 ): Promise<GenerationResult<ImageResult>> => {
   try {
-    const result = await dashscope.checkTaskStatus(taskId);
-
-    if (result.status === "SUCCEEDED" && result.imageUrl) {
-      logger.info("Image generation completed", {
-        postId,
-        taskId,
-        imageUrl: result.imageUrl,
-      });
-
-      // Upload to R2
-      const r2Key = `images/${taskId}.jpg`;
-      const r2Result = await uploadImageFromUrl(result.imageUrl, r2Key);
-
-      if (!r2Result.success || !r2Result.url) {
-        logger.error("Failed to upload image to R2", {
-          postId,
-          taskId,
-          error: r2Result.error,
-        });
-        return {
-          error: r2Result.error || "Failed to upload image to R2",
-          data: { task_id: taskId },
-        };
-      }
-
-      // Update post with both original and R2 URLs
-      await updatePost(postId, {
-        image_url: result.imageUrl,
-        r2_image_url: r2Result.url,
-        image_task_id: null,
-      });
-
-      return {
-        data: {
-          image_url: result.imageUrl,
-          r2_image_url: r2Result.url,
-          task_id: taskId,
-        },
-      };
+    if (!post.image_task_id) {
+      return { error: "No image task ID found" };
     }
 
-    if (result.status === "FAILED") {
-      logger.warn("Image generation failed", {
-        postId,
-        taskId,
+    const result = await dashscope.checkTaskStatus(post.image_task_id);
+
+    if (result.error) {
+      logger.warn("Failed to check image status", {
+        postId: post.id,
+        taskId: post.image_task_id,
         error: result.error,
       });
-
-      return {
-        error: result.error || "Task failed",
-        data: { task_id: taskId },
-      };
+      return { error: result.error };
     }
 
-    // Still pending
+    // If image is ready, upload to R2 and update post
+    if (result.status === "SUCCEEDED" && result.imageUrl) {
+      const r2Result = await uploadImageFromUrl(result.imageUrl, post.id);
+      await updatePost(post.id, {
+        r2_image_url: r2Result.url,
+      });
+    }
+
     return {
-      data: { task_id: taskId },
+      data: {
+        task_id: post.image_task_id,
+        image_url: result.imageUrl,
+        r2_image_url:
+          result.status === "SUCCEEDED" ? result.imageUrl : undefined,
+      },
     };
   } catch (error) {
     logger.error("Failed to check image status:", error);
@@ -128,11 +99,6 @@ export const checkImageStatus = async (
   }
 };
 
-/**
- * Generates a summary for a post using DeepSeek.
- * @param content - Post content to summarize
- * @returns Generated summary text or error
- */
 export const generatePostSummary = async (
   content: string
 ): Promise<GenerationResult<{ summary: string }>> => {
@@ -147,12 +113,6 @@ export const generatePostSummary = async (
   }
 };
 
-/**
- * Generates tags for a post using DeepSeek.
- * @param content - Post content to generate tags from
- * @param maxKeywords - Maximum number of tags to generate
- * @returns Comma-separated tags or error
- */
 export const generatePostTags = async (
   content: string,
   maxKeywords = 3
@@ -177,15 +137,14 @@ export const generatePostTags = async (
   }
 };
 
-/**
- * Estimates reading time for a post using DeepSeek.
- * @param content - Post content to analyze
- * @returns Estimated reading time in minutes or error
- */
 export const estimateReadingTime = async (
   content: string
 ): Promise<GenerationResult<{ mins_read: number }>> => {
   try {
+    if (!content.trim()) {
+      throw createAIProviderError("Content cannot be empty");
+    }
+
     const response = await deepseek.generate(READING_TIME_PROMPT(content));
     const mins = parseInt(response.text, 10);
 

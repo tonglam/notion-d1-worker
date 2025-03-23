@@ -39,3 +39,6 @@ coverage/
 
 # Worker Configuration
 worker.toml
+
+wrangler.toml
+migrations/

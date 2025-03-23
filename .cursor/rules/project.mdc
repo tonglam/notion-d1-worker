@@ -31,7 +31,23 @@ alwaysApply: true
 - **Reusable Helpers:** Implement only the essential utility functions (e.g., logging, basic data transformations) to support the main logic.
 
 ## Testing
-- **Integration Testing:** Only integration testings are allowed, don't create other testings, and mocking is not allowed.
+- **Integration Testing Only:** Only integration tests are allowed. Unit tests, end-to-end tests, and other test types are strictly prohibited.
+- **Real Data Sources:** All tests must use actual resources (D1, R2, Notion) - no mocking or fake data is allowed.
+- **Service Coverage:** Tests should aim to cover all services used in workflows, though formal coverage reporting is not required.
+- **Write Operation Safety:**
+  - Create new test data for write operations
+  - Delete test data after test completion
+  - Never modify existing production data
+  - Never use delete-all or flush-all operations before tests
+- **Data Integrity:**
+  - Each test should be self-contained with its own test data
+  - Clean up all test data after test completion
+  - Ensure test data is clearly identifiable (e.g., with test_ prefix)
+- **Resource Consideration:**
+  - Be mindful of API rate limits when testing
+  - Consider Cloudflare's free tier limitations in test design
+  - Optimize test execution to minimize resource usage
+  - If a resource is needed, try to find in `test/fixtures` like  [db.fixture.ts](mdc:test/fixtures/db.fixture.ts), [r2.fixture.ts](mdc:test/fixtures/r2.fixture.ts)
 
 ## Overall Guidelines
 - **Keep It Simple:** Avoid over-designing the project. Embrace the straightforward nature of Cloudflare Workers and Bun to keep the codebase maintainable and efficient.

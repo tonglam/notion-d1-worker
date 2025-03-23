@@ -2,7 +2,7 @@ import type {
   PageObjectResponse,
   RichTextItemResponse,
 } from "@notionhq/client/build/src/api-endpoints";
-import { DEEPSEEK_API } from "../configs/api.config";
+import { DEEPSEEK_API_CONFIG } from "../configs/api.config";
 import { PROPERTY_VALIDATIONS } from "../configs/validation.config";
 import type {
   NotionPage,
@@ -190,9 +190,9 @@ export const validateTokenLimits = (content: string): void => {
   // Rough estimate: 1 token ≈ 4 characters
   const estimatedTokens = Math.ceil(content.length / 4);
 
-  if (estimatedTokens > DEEPSEEK_API.LIMITS.MAX_INPUT_TOKENS) {
+  if (estimatedTokens > DEEPSEEK_API_CONFIG.LIMITS.MAX_INPUT_TOKENS) {
     throw createValidationError(
-      `Content exceeds maximum input token limit of ${DEEPSEEK_API.LIMITS.MAX_INPUT_TOKENS} tokens (estimated: ${estimatedTokens} tokens)`
+      `Content exceeds maximum input token limit of ${DEEPSEEK_API_CONFIG.LIMITS.MAX_INPUT_TOKENS} tokens (estimated: ${estimatedTokens} tokens)`
     );
   }
 };

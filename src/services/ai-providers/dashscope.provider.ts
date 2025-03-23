@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { DASHSCOPE_API } from "@/configs/api.config";
+import { DASHSCOPE_API_CONFIG } from "../../configs/api.config";
 import {
   IMAGE_NEGATIVE_PROMPT,
   generateImagePrompt,
@@ -20,8 +20,8 @@ const logger = createLogger("DashScopeProvider");
 
 const rateLimitedFetch = <T>(fn: () => Promise<T>): Promise<T> =>
   withRateLimit(fn, {
-    maxRequestsPerSecond: DASHSCOPE_API.LIMITS.MAX_REQUESTS_PER_SECOND,
-    maxRequestsPerMinute: DASHSCOPE_API.LIMITS.MAX_REQUESTS_PER_MINUTE,
+    maxRequestsPerSecond: DASHSCOPE_API_CONFIG.LIMITS.MAX_REQUESTS_PER_SECOND,
+    maxRequestsPerMinute: DASHSCOPE_API_CONFIG.LIMITS.MAX_REQUESTS_PER_MINUTE,
   });
 
 /**
@@ -38,28 +38,35 @@ export const createImageTask = async (
     await rateLimitedFetch(() => Promise.resolve());
 
     const response = await fetch(
-      `${DASHSCOPE_API.BASE_URL}${DASHSCOPE_API.ENDPOINTS.IMAGE_SYNTHESIS}`,
+      `${DASHSCOPE_API_CONFIG.BASE_URL}${DASHSCOPE_API_CONFIG.ENDPOINTS.IMAGE_SYNTHESIS}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-DashScope-Async": "enable",
           Authorization: `Bearer ${DASHSCOPE_API_KEY}`,
         },
         body: JSON.stringify({
-          model: DASHSCOPE_API.MODELS.IMAGE,
+          model: DASHSCOPE_API_CONFIG.MODELS.IMAGE,
           input: {
             prompt: generateImagePrompt(post),
             negative_prompt: IMAGE_NEGATIVE_PROMPT,
           },
           parameters: {
-            size: DASHSCOPE_API.DEFAULT_CONFIG.IMAGE.SIZE,
-            n: DASHSCOPE_API.DEFAULT_CONFIG.IMAGE.COUNT,
+            size: DASHSCOPE_API_CONFIG.DEFAULT_CONFIG.IMAGE.SIZE,
+            n: DASHSCOPE_API_CONFIG.DEFAULT_CONFIG.IMAGE.COUNT,
           },
+          task: "text-to-image",
         }),
       }
     );
 
     if (!response.ok) {
+      const errorBody = await response.text();
+      logger.error("DashScope API error response:", {
+        status: response.status,
+        body: errorBody,
+      });
       throw createAIProviderError(
         `Failed to create task: ${response.status} ${response.statusText}`,
         "DashScope"
@@ -105,7 +112,9 @@ export const checkTaskStatus = async (
     await rateLimitedFetch(() => Promise.resolve());
 
     const response = await fetch(
-      `${DASHSCOPE_API.BASE_URL}${DASHSCOPE_API.ENDPOINTS.TASK_STATUS(taskId)}`,
+      `${
+        DASHSCOPE_API_CONFIG.BASE_URL
+      }${DASHSCOPE_API_CONFIG.ENDPOINTS.TASK_STATUS(taskId)}`,
       {
         method: "GET",
         headers: {

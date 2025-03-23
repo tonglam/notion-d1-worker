@@ -9,6 +9,7 @@ declare global {
 
   // Bindings from wrangler.toml
   var DB: D1Database;
+  var TEST_DB: D1Database;
   var IMAGE_BUCKET: R2Bucket;
 }
 

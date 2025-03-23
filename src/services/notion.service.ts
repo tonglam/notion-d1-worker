@@ -9,12 +9,11 @@ import type {
   TitlePropertyItemObjectResponse,
   UrlPropertyItemObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
-import { NOTION_API } from "../configs/api.config";
+import { NOTION_API_CONFIG } from "../configs/api.config";
 import { ERROR_MESSAGES } from "../configs/constants.config";
 import type { D1Post, NotionPage } from "../types";
 import { createNotionAPIError } from "../utils/errors.util";
 import { createLogger } from "../utils/logger.util";
-import { PropertyMappers } from "../utils/property-mappers.util";
 import { withRateLimit } from "../utils/rate-limiter.util";
 import { validateNotionPage } from "../utils/validation.util";
 
@@ -26,8 +25,8 @@ const logger = createLogger("NotionService");
 
 const rateLimitedFetch = <T>(fn: () => Promise<T>): Promise<T> =>
   withRateLimit(fn, {
-    maxRequestsPerSecond: NOTION_API.RATE_LIMITS.MAX_REQUESTS_PER_SECOND,
-    maxRequestsPerMinute: NOTION_API.RATE_LIMITS.MAX_REQUESTS_PER_MINUTE,
+    maxRequestsPerSecond: NOTION_API_CONFIG.RATE_LIMITS.MAX_REQUESTS_PER_SECOND,
+    maxRequestsPerMinute: NOTION_API_CONFIG.RATE_LIMITS.MAX_REQUESTS_PER_MINUTE,
   });
 
 /** Singleton instance of the Notion client */
@@ -50,7 +49,7 @@ const getNotionClient = (): Client => {
 
   notionClient = new Client({
     auth: token,
-    notionVersion: NOTION_API.VERSION,
+    notionVersion: NOTION_API_CONFIG.VERSION,
   });
 
   return notionClient;
@@ -380,38 +379,67 @@ const isUrl = (prop: unknown): prop is UrlPropertyItemObjectResponse =>
  */
 export const transformToD1Posts = (pages: PageObjectResponse[]): D1Post[] => {
   return pages.map((page) => {
-    const props = page.properties;
+    // Extract basic metadata that should always be present
+    const id = page.id;
+    const created_at = page.created_time;
+    const updated_at = page.last_edited_time;
+    const notion_last_edited_at = page.last_edited_time;
+    const notion_url = page.url;
 
-    // Validate required properties
-    if (!isTitle(props.Title)) throw new Error("Invalid title property");
-    if (!isSelect(props.Category)) throw new Error("Invalid category property");
-    if (!isPeople(props.Author)) throw new Error("Invalid author property");
+    // Extract title with fallback
+    let title = "Untitled";
+    if ("properties" in page && "title" in page.properties) {
+      const titleProp = page.properties.title;
+      if (isTitle(titleProp) && titleProp.title.length > 0) {
+        title = titleProp.title[0].plain_text;
+      }
+    }
 
-    const post: D1Post = {
-      id: page.id,
-      title: PropertyMappers.title(props.Title),
-      created_at: new Date(page.created_time).toISOString(),
-      updated_at: new Date().toISOString(),
-      notion_last_edited_at: new Date(page.last_edited_time).toISOString(),
-      category: PropertyMappers.select(props.Category),
-      author: PropertyMappers.people(props.Author),
-      notion_url: page.url,
-      excerpt: isRichText(props.Excerpt)
-        ? PropertyMappers.text(props.Excerpt)
-        : null,
+    // Extract optional properties with fallbacks
+    let category = "Uncategorized";
+    let author = "Unknown";
+    let excerpt: string | null = null;
 
-      // Clear AI-generated fields to trigger regeneration
+    if ("properties" in page) {
+      // Try to extract category
+      const categoryProp = page.properties.Category;
+      if (isSelect(categoryProp) && categoryProp.select) {
+        category = categoryProp.select.name;
+      }
+
+      // Try to extract author
+      const authorProp = page.properties.Author;
+      if (isPeople(authorProp) && authorProp.people.length > 0) {
+        const user = authorProp.people[0];
+        author = "name" in user ? user.name ?? "Unknown" : "Unknown";
+      }
+
+      // Try to extract excerpt
+      const excerptProp = page.properties.Excerpt;
+      if (isRichText(excerptProp) && excerptProp.rich_text.length > 0) {
+        excerpt = excerptProp.rich_text[0].plain_text;
+      }
+    }
+
+    // Return D1Post with all fields
+    return {
+      id,
+      title,
+      created_at,
+      updated_at,
+      notion_last_edited_at,
+      category,
+      author,
+      notion_url,
+      excerpt,
+      // Extended fields with null defaults
       summary: null,
-      tags: null,
       mins_read: null,
-
-      // Keep image-related fields as is
-      image_url: isUrl(props.Image) ? PropertyMappers.url(props.Image) : null,
-      r2_image_url: null,
       image_task_id: null,
+      image_url: null,
+      tags: null,
+      r2_image_url: null,
     };
-
-    return post;
   });
 };
 
@@ -422,6 +450,6 @@ export const initNotionClient = (token: string): Client => {
 
   return new Client({
     auth: token,
-    notionVersion: NOTION_API.VERSION,
+    notionVersion: NOTION_API_CONFIG.VERSION,
   });
 };

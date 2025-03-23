@@ -1,5 +1,5 @@
 // Notion API Configuration
-export const NOTION_API = {
+export const NOTION_API_CONFIG = {
   VERSION: "2022-06-28",
   RATE_LIMITS: {
     MAX_REQUESTS_PER_SECOND: 3,
@@ -8,7 +8,11 @@ export const NOTION_API = {
 } as const;
 
 // DeepSeek API Configuration
-export const DEEPSEEK_API = {
+export const DEEPSEEK_API_CONFIG = {
+  MODELS: {
+    CHAT: "deepseek-chat",
+    REASONER: "deepseek-reasoner",
+  },
   LIMITS: {
     MAX_INPUT_TOKENS: 32000,
     MAX_OUTPUT_TOKENS: 8000,
@@ -16,10 +20,10 @@ export const DEEPSEEK_API = {
 } as const;
 
 // DashScope API Configuration
-export const DASHSCOPE_API = {
+export const DASHSCOPE_API_CONFIG = {
   BASE_URL: "https://dashscope.aliyuncs.com/api/v1",
   ENDPOINTS: {
-    IMAGE_SYNTHESIS: "/text2image/generation",
+    IMAGE_SYNTHESIS: "/services/aigc/text2image/image-synthesis",
     TASK_STATUS: (taskId: string) => `/tasks/${taskId}`,
   },
   MODELS: {

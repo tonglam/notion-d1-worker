@@ -47,7 +47,6 @@ alwaysApply: true
   - Be mindful of API rate limits when testing
   - Consider Cloudflare's free tier limitations in test design
   - Optimize test execution to minimize resource usage
-  - If a resource is needed, try to find in `test/fixtures` like  [db.fixture.ts](mdc:test/fixtures/db.fixture.ts), [r2.fixture.ts](mdc:test/fixtures/r2.fixture.ts)
 
 ## Overall Guidelines
 - **Keep It Simple:** Avoid over-designing the project. Embrace the straightforward nature of Cloudflare Workers and Bun to keep the codebase maintainable and efficient.

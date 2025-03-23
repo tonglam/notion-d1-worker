@@ -6,6 +6,7 @@ import type {
   D1PostExtended,
   D1PostRecord,
   D1PostUpdate,
+  UpdatableField,
 } from "../types/db.types";
 import {
   executeBatchOperations,
@@ -150,15 +151,49 @@ export const insertPosts = async (posts: D1Post[]): Promise<void> => {
   logger.info(`Inserting ${posts.length} posts...`);
 
   try {
+    // Log the first post for debugging
+    if (posts.length > 0) {
+      logger.info("First post to insert", { post: posts[0] });
+    }
+
+    // Validate posts before inserting
+    for (const post of posts) {
+      if (!post.id) {
+        throw createDatabaseError("Post ID is required");
+      }
+      if (!post.title) {
+        throw createDatabaseError(`Title is required for post ${post.id}`);
+      }
+      if (!post.category) {
+        throw createDatabaseError(`Category is required for post ${post.id}`);
+      }
+      if (!post.author) {
+        throw createDatabaseError(`Author is required for post ${post.id}`);
+      }
+      if (!post.notion_url) {
+        throw createDatabaseError(`Notion URL is required for post ${post.id}`);
+      }
+      if (!post.notion_last_edited_at) {
+        throw createDatabaseError(
+          `Last edited time is required for post ${post.id}`
+        );
+      }
+    }
+
     const operations: BatchOperation<D1PostRecord>[] = posts.map((post) => ({
       type: "INSERT",
-      data: withTimestamps(post, true) as D1PostRecord,
+      data: withTimestamps(
+        post as unknown as Record<string, unknown>,
+        true
+      ) as D1PostRecord,
     }));
 
+    logger.info("Starting batch operations...");
     await executeBatchOperations(getDb(), operations, BATCH_SIZE);
     logger.info("Posts inserted successfully");
-  } catch (error) {
-    logger.error(ERROR_MESSAGES.DB_INSERT, error);
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.error("Failed to insert posts", error);
     throw createDatabaseError(ERROR_MESSAGES.DB_INSERT, error);
   }
 };
@@ -186,30 +221,6 @@ export const updatePosts = async (
   } catch (error) {
     logger.error("Failed to update posts", error);
     throw createDatabaseError("Failed to update posts", error);
-  }
-};
-
-/**
- * Deletes multiple posts from the database
- * @param ids - Array of post IDs to delete
- * @throws {DatabaseError} If deletion fails
- */
-export const deletePosts = async (ids: string[]): Promise<void> => {
-  logger.info(`Deleting ${ids.length} posts...`);
-
-  try {
-    const operations: BatchOperation<
-      Record<string, unknown> & { id: string }
-    >[] = ids.map((id) => ({
-      type: "DELETE",
-      data: { id },
-    }));
-
-    await executeBatchOperations(getDb(), operations, BATCH_SIZE);
-    logger.info("Posts deleted successfully");
-  } catch (error) {
-    logger.error("Failed to delete posts", error);
-    throw createDatabaseError("Failed to delete posts", error);
   }
 };
 
@@ -314,7 +325,9 @@ export const upsertPosts = async (
             : null;
         })
         .filter(
-          (update): update is { id: string; data: Partial<D1Post> } =>
+          (
+            update
+          ): update is { id: string; data: Pick<D1Post, UpdatableField> } =>
             update !== null
         );
 
@@ -330,5 +343,42 @@ export const upsertPosts = async (
   } catch (error) {
     logger.error("Failed to upsert posts", error);
     throw createDatabaseError("Failed to upsert posts", error);
+  }
+};
+
+/**
+ * Updates posts with a custom SQL query in batches
+ * @param sql - SQL query with placeholders
+ * @param batchData - Array of data to bind to placeholders
+ * @throws {DatabaseError} If update fails
+ */
+export const updatePostsWithSQL = async (
+  sql: string,
+  batchData: unknown[][]
+): Promise<void> => {
+  logger.info(`Updating posts with custom SQL, ${batchData.length} batches...`);
+
+  try {
+    const db = getDb();
+    const stmt = db.prepare("BEGIN");
+    await stmt.run();
+
+    try {
+      for (const data of batchData) {
+        await db
+          .prepare(sql)
+          .bind(...data)
+          .run();
+      }
+
+      await db.prepare("COMMIT").run();
+      logger.info("Posts updated successfully");
+    } catch (error) {
+      await db.prepare("ROLLBACK").run();
+      throw error;
+    }
+  } catch (error) {
+    logger.error("Failed to update posts with custom SQL", error);
+    throw createDatabaseError("Failed to update posts with custom SQL", error);
   }
 };

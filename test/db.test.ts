@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   getPosts,
   getPostsByIds,
+  initializeDb,
   insertPosts,
   updatePosts,
   upsertPosts,
@@ -52,7 +53,10 @@ describe("D1 Database Integration Tests", () => {
 
   beforeAll(async () => {
     try {
-      cleanup = await setupTestDatabase();
+      const { cleanup: cleanupFn, db } = await setupTestDatabase();
+      cleanup = cleanupFn;
+      // Initialize the database instance
+      initializeDb(db);
     } catch (error) {
       console.error("Failed to initialize test database:", error);
       throw error;
@@ -60,7 +64,9 @@ describe("D1 Database Integration Tests", () => {
   });
 
   afterAll(() => {
-    cleanup();
+    if (cleanup) {
+      cleanup();
+    }
   });
 
   test("should insert posts successfully", async () => {

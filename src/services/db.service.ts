@@ -1,15 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { BATCH_SIZE, ERROR_MESSAGES } from "../configs/constants.config";
-import type {
-  BatchOperation,
-  D1Post,
-  D1PostExtended,
-  D1PostRecord,
-  D1PostUpdate,
-  UpdatableField,
-} from "../types/db.types";
+import { ERROR_MESSAGES } from "../configs/constants.config";
+import type { D1Post, D1PostExtended, UpdatableField } from "../types/db.types";
 import {
-  executeBatchOperations,
   getChangedFields,
   mapRowToPost,
   withTimestamps,
@@ -180,17 +172,35 @@ export const insertPosts = async (posts: D1Post[]): Promise<void> => {
       }
     }
 
-    const operations: BatchOperation<D1PostRecord>[] = posts.map((post) => ({
-      type: "INSERT",
-      data: withTimestamps(
-        post as unknown as Record<string, unknown>,
-        true
-      ) as D1PostRecord,
-    }));
+    const db = getDb();
+    const stmt = db.prepare("BEGIN");
+    await stmt.run();
 
-    logger.info("Starting batch operations...");
-    await executeBatchOperations(getDb(), operations, BATCH_SIZE);
-    logger.info("Posts inserted successfully");
+    try {
+      for (const post of posts) {
+        const timestampedPost = withTimestamps(
+          post as unknown as Record<string, unknown>,
+          true
+        );
+        const fields = Object.keys(timestampedPost);
+        const values = fields.map((key) => timestampedPost[key]);
+        const placeholders = fields.map(() => "?").join(", ");
+
+        const query = `INSERT INTO posts (${fields.join(
+          ", "
+        )}) VALUES (${placeholders})`;
+        await db
+          .prepare(query)
+          .bind(...values)
+          .run();
+      }
+
+      await db.prepare("COMMIT").run();
+      logger.info("Posts inserted successfully");
+    } catch (error) {
+      await db.prepare("ROLLBACK").run();
+      throw error;
+    }
   } catch (err: unknown) {
     const error = err as Error;
     logger.error("Failed to insert posts", error);
@@ -209,15 +219,33 @@ export const updatePosts = async (
   logger.info(`Updating ${updates.length} posts...`);
 
   try {
-    const operations: BatchOperation<D1PostUpdate>[] = updates.map(
-      ({ id, data }) => ({
-        type: "UPDATE",
-        data: withTimestamps({ id, ...data }, false) as D1PostUpdate,
-      })
-    );
+    const db = getDb();
+    const stmt = db.prepare("BEGIN");
+    await stmt.run();
 
-    await executeBatchOperations(getDb(), operations, BATCH_SIZE);
-    logger.info("Posts updated successfully");
+    try {
+      for (const { id, data } of updates) {
+        const timestampedData = withTimestamps(
+          data as Record<string, unknown>,
+          false
+        );
+        const fields = Object.keys(timestampedData);
+        const values = fields.map((key) => timestampedData[key]);
+        const setClause = fields.map((field) => `${field} = ?`).join(", ");
+
+        const query = `UPDATE posts SET ${setClause} WHERE id = ?`;
+        await db
+          .prepare(query)
+          .bind(...values, id)
+          .run();
+      }
+
+      await db.prepare("COMMIT").run();
+      logger.info("Posts updated successfully");
+    } catch (error) {
+      await db.prepare("ROLLBACK").run();
+      throw error;
+    }
   } catch (error) {
     logger.error("Failed to update posts", error);
     throw createDatabaseError("Failed to update posts", error);

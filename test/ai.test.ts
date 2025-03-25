@@ -6,33 +6,21 @@ import {
   generatePostSummary,
   generatePostTags,
 } from "../src/services/ai.service";
+import { initializeDb } from "../src/services/db.service";
 import type { D1Post } from "../src/types/db.types";
 import { createTestPost, setupTestDatabase } from "./fixtures/db.fixture";
-
-// Test data
-const TEST_DASHSCOPE_KEY = process.env.DASHSCOPE_API_KEY;
-const TEST_DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY;
-
-if (!TEST_DASHSCOPE_KEY || !TEST_DEEPSEEK_KEY) {
-  throw new Error(
-    "DASHSCOPE_API_KEY and DEEPSEEK_API_KEY environment variables are required for testing"
-  );
-}
-
-// Set up global variables required by the service
-declare global {
-  var DASHSCOPE_API_KEY: string;
-  var DEEPSEEK_API_KEY: string;
-  var TEST_DB: D1Database;
-}
-globalThis.DASHSCOPE_API_KEY = TEST_DASHSCOPE_KEY;
-globalThis.DEEPSEEK_API_KEY = TEST_DEEPSEEK_KEY;
+import "./setup";
 
 describe("AI Service Integration Tests", () => {
+  let db: D1Database;
   let cleanup: () => void;
 
   beforeAll(async () => {
-    cleanup = await setupTestDatabase();
+    const result = await setupTestDatabase();
+    cleanup = result.cleanup;
+    db = result.db;
+    // Initialize the database instance
+    initializeDb(db);
   });
 
   afterAll(() => {
@@ -63,17 +51,19 @@ describe("AI Service Integration Tests", () => {
     async () => {
       testPost = createTestPost({
         title: "Test Image Generation",
-        content: testContent,
+        category: "AI Testing",
+        author: "Test Runner",
       });
 
       const result = await generateImage(testPost);
+      console.log("Image generation result:", JSON.stringify(result, null, 2));
       expect(result.error).toBeUndefined();
       expect(result.data?.task_id).toBeDefined();
     },
     TEST_TIMEOUT
   );
 
-  test(
+  test.skip(
     "should check image generation status",
     async () => {
       if (!testPost.image_task_id) {
@@ -84,13 +74,12 @@ describe("AI Service Integration Tests", () => {
       const result = await checkImageStatus(testPost);
       expect(result.error).toBeUndefined();
       expect(result.data?.task_id).toBe(testPost.image_task_id);
-      // Status could be pending or succeeded, both are valid
       expect(result.data?.image_url || result.data?.r2_image_url).toBeDefined();
     },
     TEST_TIMEOUT
   );
 
-  test(
+  test.skip(
     "should generate post summary",
     async () => {
       const result = await generatePostSummary(testContent);

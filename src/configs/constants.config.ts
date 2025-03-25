@@ -21,18 +21,6 @@ export const UPDATABLE_FIELDS = [
   "image_task_id",
 ] as const;
 
-// Validation Constants
-/** Required properties for Notion pages */
-export const REQUIRED_PROPERTIES = [
-  "Title",
-  "Slug",
-  "Published",
-  "Category",
-  "Tags",
-  "Author",
-  "Content Key",
-] as const;
-
 // Error Messages
 export const ERROR_MESSAGES = {
   /** Error when fetching posts from Notion API fails */

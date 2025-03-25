@@ -34,7 +34,7 @@ export const imageCollectionWorkflow =
       for (const post of posts) {
         if (!post.image_task_id) continue;
 
-        const result = await checkImageStatus(post.image_task_id, post.id);
+        const result = await checkImageStatus(post);
 
         if (result.data?.image_url) {
           // Success - update post with both URLs and clear task

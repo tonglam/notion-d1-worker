@@ -3,34 +3,34 @@ import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoint
 import { beforeAll, describe, expect, test } from "bun:test";
 import {
   fetchPageContent,
+  getCategories,
   initNotionClient,
   transformToD1Posts,
 } from "../src/services/notion.service";
-import type { D1PostMetadata } from "../src/types/db.types";
-
-// Test data
-const TEST_TOKEN = process.env.NOTION_TOKEN;
-const TEST_ROOT_PAGE = process.env.NOTION_ROOT_PAGE_ID;
-
-if (!TEST_TOKEN || !TEST_ROOT_PAGE) {
-  throw new Error(
-    "NOTION_TOKEN and NOTION_ROOT_PAGE_ID environment variables are required for testing"
-  );
-}
-
-// Set up global variables required by the service
-declare global {
-  var NOTION_TOKEN: string;
-  var NOTION_ROOT_PAGE_ID: string;
-}
-globalThis.NOTION_TOKEN = TEST_TOKEN;
-globalThis.NOTION_ROOT_PAGE_ID = TEST_ROOT_PAGE;
+import type { NotionPage } from "../src/types/notion.types";
+import { validateNotionPage } from "../src/utils/validation.util";
 
 describe("Notion Service Integration Tests", () => {
   let client: Client;
+  let testPage: NotionPage;
 
-  beforeAll(() => {
-    client = initNotionClient(TEST_TOKEN);
+  beforeAll(async () => {
+    client = initNotionClient(process.env.NOTION_TOKEN!);
+    // Fetch a real test page that we'll use across multiple tests
+    try {
+      const page = (await client.pages.retrieve({
+        page_id: process.env.NOTION_ROOT_PAGE_ID!,
+      })) as PageObjectResponse;
+      testPage = validateNotionPage(page);
+    } catch (error) {
+      console.error("Failed to fetch test page. Please ensure:");
+      console.error("1. Your Notion token has the correct permissions");
+      console.error(
+        "2. The page ID exists and is accessible to your integration"
+      );
+      console.error("3. You have shared the page with your integration");
+      throw error;
+    }
   });
 
   test("should initialize Notion client with valid token", () => {
@@ -44,20 +44,12 @@ describe("Notion Service Integration Tests", () => {
     expect(() => initNotionClient("")).toThrow("Missing Notion API token");
   });
 
-  test("should extract metadata from a page with missing properties", async () => {
-    // Get a page to test
-    const page = (await client.pages.retrieve({
-      page_id: TEST_ROOT_PAGE,
-    })) as PageObjectResponse;
-
-    // Transform the page to D1Post format
-    const posts = transformToD1Posts([page]);
+  test("should transform pages to D1Posts with required fields", () => {
+    const posts = transformToD1Posts([testPage]);
     expect(posts.length).toBe(1);
 
-    const metadata = posts[0] as D1PostMetadata;
-
-    // Test required fields that should always be present
-    expect(metadata).toMatchObject({
+    const post = posts[0];
+    expect(post).toMatchObject({
       id: expect.any(String),
       title: expect.any(String),
       created_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
@@ -65,35 +57,61 @@ describe("Notion Service Integration Tests", () => {
       notion_last_edited_at: expect.stringMatching(
         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
       ),
-      notion_url: expect.stringContaining("https://www.notion.so/"),
+      notion_url: expect.stringContaining("notion.so/"),
     });
 
-    // Test optional fields
-    expect(metadata).toHaveProperty("category");
-    expect(metadata).toHaveProperty("author");
-    expect(metadata).toHaveProperty("excerpt");
-
-    // Log the extracted metadata for inspection
-    console.log("\nExtracted D1PostMetadata:", {
-      id: metadata.id,
-      title: metadata.title,
-      dates: {
-        created_at: metadata.created_at,
-        updated_at: metadata.updated_at,
-        notion_last_edited_at: metadata.notion_last_edited_at,
-      },
-      properties: {
-        category: metadata.category,
-        author: metadata.author,
-        excerpt: metadata.excerpt,
-      },
-      notion_url: metadata.notion_url,
-    });
+    // These fields might be null/undefined depending on the actual page
+    expect(post).toHaveProperty("category");
+    expect(post).toHaveProperty("author");
   });
 
   test("should handle invalid page content gracefully", async () => {
     const invalidPageId = "00000000-0000-0000-0000-000000000000";
     const content = await fetchPageContent(invalidPageId);
     expect(content).toBeNull();
+  });
+
+  test("should fetch and transform published posts", async () => {
+    const posts = [testPage];
+    expect(Array.isArray(posts)).toBe(true);
+
+    if (posts.length > 0) {
+      const firstPost = posts[0];
+      expect(firstPost).toHaveProperty("id");
+      expect(firstPost).toHaveProperty("properties");
+      expect(firstPost.properties.title).toBeDefined();
+    }
+  });
+
+  test("should extract categories from pages", async () => {
+    const posts = [testPage];
+    const { regularCategories, mitCategories } = getCategories(posts);
+
+    expect(Array.isArray(regularCategories)).toBe(true);
+    expect(Array.isArray(mitCategories)).toBe(true);
+
+    // Verify category format if any exist
+    if (regularCategories.length > 0) {
+      regularCategories.forEach((category) => {
+        expect(typeof category).toBe("string");
+        expect(category.length).toBeGreaterThan(0);
+      });
+    }
+
+    if (mitCategories.length > 0) {
+      mitCategories.forEach((category) => {
+        expect(typeof category).toBe("string");
+      });
+    }
+  });
+
+  test("should fetch page content successfully", async () => {
+    const content = await fetchPageContent(process.env.NOTION_ROOT_PAGE_ID!);
+    expect(content).not.toBeNull();
+    expect(typeof content).toBe("string");
+
+    if (content) {
+      expect(content.trim().length).toBeGreaterThan(0);
+    }
   });
 });

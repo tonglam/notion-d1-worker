@@ -12,6 +12,7 @@
     "@ai-sdk/deepseek": "0.2.0",
     "@notionhq/client": "^2.2.14",
     "ai": "4.2.0",
+    "dotenv": "16.4.7",
     "zod": "3.23.8"
   },
   "devDependencies": {
@@ -19,6 +20,6 @@
     "@miniflare/d1": "2.14.4",
     "bun-types": "1.2.5",
     "typescript": "^5.3.3",
-    "wrangler": "^3.28.2"
+    "wrangler": "4"
   }
 }

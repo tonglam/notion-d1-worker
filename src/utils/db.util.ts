@@ -1,88 +1,8 @@
-import type { D1Database } from "@cloudflare/workers-types";
 import { UPDATABLE_FIELDS } from "../configs/constants.config";
-import type {
-  BatchOperation,
-  D1Post,
-  D1PostRecord,
-  D1PostUpdate,
-  UpdatableField,
-} from "../types/db.types";
-import { createDatabaseError } from "../utils/errors.util";
+import type { D1Post, UpdatableField } from "../types/db.types";
 import { createLogger } from "../utils/logger.util";
 
 const logger = createLogger("D1Utils");
-
-/**
- * Validates batch size is within acceptable range
- * @param size - Batch size to validate
- * @throws {DatabaseError} If size is invalid
- */
-export const validateBatchSize = (size: number): void => {
-  if (size <= 0 || size > 100) {
-    throw createDatabaseError("Batch size must be between 1 and 100");
-  }
-};
-
-/**
- * Executes a batch of database operations
- * @param db - D1 database instance
- * @param operations - Array of operations to execute
- * @param batchSize - Size of each batch
- * @throws {DatabaseError} If batch execution fails
- */
-export const executeBatchOperations = async <
-  T extends D1PostRecord | D1PostUpdate
->(
-  db: D1Database,
-  operations: BatchOperation<T>[],
-  batchSize: number
-): Promise<void> => {
-  validateBatchSize(batchSize);
-
-  for (let i = 0; i < operations.length; i += batchSize) {
-    const batch = operations.slice(i, i + batchSize);
-    const stmt = db.prepare("BEGIN");
-    await stmt.run();
-
-    try {
-      for (const op of batch) {
-        const { type, data } = op;
-        const fields = Object.keys(data).filter((key) => key !== "id");
-        const values = fields.map((field) => data[field as keyof T]);
-
-        if (type === "INSERT") {
-          const placeholders = fields.map(() => "?").join(", ");
-          const query = `INSERT INTO posts (${fields.join(
-            ", "
-          )}) VALUES (${placeholders})`;
-          await db
-            .prepare(query)
-            .bind(...values)
-            .run();
-        } else if (type === "UPDATE") {
-          const setClause = fields.map((field) => `${field} = ?`).join(", ");
-          const query = `UPDATE posts SET ${setClause} WHERE id = ?`;
-          await db
-            .prepare(query)
-            .bind(...values, data.id)
-            .run();
-        } else if (type === "DELETE") {
-          await db
-            .prepare("DELETE FROM posts WHERE id = ?")
-            .bind(data.id)
-            .run();
-        }
-      }
-
-      await db.prepare("COMMIT").run();
-      logger.info(`Processed batch of ${batch.length} operations`);
-    } catch (error) {
-      await db.prepare("ROLLBACK").run();
-      logger.error("Failed to execute batch operations", error);
-      throw createDatabaseError("Failed to execute batch operations", error);
-    }
-  }
-};
 
 /**
  * Gets changed fields between new and existing post

@@ -3,19 +3,15 @@ import type {
   BlockObjectResponse,
   ListBlockChildrenResponse,
   PageObjectResponse,
-  PeoplePropertyItemObjectResponse,
-  RichTextItemResponse,
-  SelectPropertyItemObjectResponse,
-  TitlePropertyItemObjectResponse,
-  UrlPropertyItemObjectResponse,
 } from "@notionhq/client/build/src/api-endpoints";
 import { NOTION_API_CONFIG } from "../configs/api.config";
 import { ERROR_MESSAGES } from "../configs/constants.config";
-import type { D1Post, NotionPage } from "../types";
+import type { D1Post } from "../types/db.types";
+import type { NotionPage } from "../types/notion.types";
 import { createNotionAPIError } from "../utils/errors.util";
 import { createLogger } from "../utils/logger.util";
 import { withRateLimit } from "../utils/rate-limiter.util";
-import { validateNotionPage } from "../utils/validation.util";
+import { hasValidContent, validateNotionPage } from "../utils/validation.util";
 
 const logger = createLogger("NotionService");
 
@@ -39,20 +35,37 @@ let notionClient: Client | null = null;
  */
 const getNotionClient = (): Client => {
   if (notionClient) {
+    logger.info("Returning existing Notion client");
     return notionClient;
   }
 
-  const token = NOTION_TOKEN;
-  if (!token) {
+  logger.info("Creating new Notion client");
+
+  if (!NOTION_TOKEN) {
+    logger.error("NOTION_TOKEN environment variable is missing");
     throw createNotionAPIError("NOTION_TOKEN environment variable is required");
   }
 
-  notionClient = new Client({
-    auth: token,
+  logger.info("Initializing Notion client", {
     notionVersion: NOTION_API_CONFIG.VERSION,
+    tokenLength: NOTION_TOKEN.length,
+    tokenPrefix: NOTION_TOKEN.substring(0, 4) + "...", // Log first 4 chars for debugging
   });
 
-  return notionClient;
+  try {
+    notionClient = new Client({
+      auth: NOTION_TOKEN,
+      notionVersion: NOTION_API_CONFIG.VERSION,
+    });
+
+    logger.info("Successfully created Notion client");
+    return notionClient;
+  } catch (error) {
+    logger.error("Failed to create Notion client", {
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    throw createNotionAPIError("Failed to create Notion client", error);
+  }
 };
 
 // =========================================
@@ -60,41 +73,22 @@ const getNotionClient = (): Client => {
 // =========================================
 
 /**
- * Checks if a page is a category page
- * @param page - Notion page to check
- * @returns true if page is a category page
+ * Checks if a page is a valid content page
  */
-const isCategoryPage = (page: NotionPage): boolean => {
-  // A category page has child pages
-  return page.properties["Child Pages"]?.relation?.length > 0;
-};
-
-/**
- * Checks if a page is a valid content page (not a category page and has content)
- * @param page - Notion page to validate
- * @returns true if page is valid content page, false otherwise
- */
-const isValidContentPage = (page: NotionPage): boolean => {
-  // If it's a category page, it's not a content page
-  if (isCategoryPage(page)) {
+function isValidContentPage(page: NotionPage): boolean {
+  if (!hasValidContent(page)) {
+    logger.warn("[NotionService] Failed to validate page", {
+      pageId: page.id,
+      url: page.url,
+      error: "Invalid or missing title property",
+    });
     return false;
   }
-
-  // Check if page has actual content
-  const hasTitle = page.properties.Title.title.length > 0;
-  const hasContent = page.properties["Content Key"]?.rich_text?.length > 0;
-  const hasExcerpt = page.properties.Excerpt?.rich_text?.length > 0;
-  const hasParent = page.properties.Parent?.relation?.length > 0;
-  const hasMITParent = page.properties["MIT Parent"]?.relation?.length > 0;
-
-  // Content page must have a title, content/excerpt, and a parent relation
-  return hasTitle && (hasContent || hasExcerpt) && (hasParent || hasMITParent);
-};
+  return true;
+}
 
 /**
- * Process pages and separate valid from invalid ones
- * @param pages - Array of page objects
- * @returns Object containing valid and invalid pages
+ * Process pages and filter valid ones
  */
 export const processPages = (
   pages: PageObjectResponse[]
@@ -106,14 +100,18 @@ export const processPages = (
   for (const page of pages) {
     try {
       const validatedPage = validateNotionPage(page);
-
-      // Additional validation for content pages
       if (!isValidContentPage(validatedPage)) {
+        logger.warn("Page failed content validation", {
+          pageId: page.id,
+          url: page.url,
+        });
         continue;
       }
+      validPages.push(validatedPage);
     } catch (error) {
-      logger.warn("Invalid page", {
+      logger.warn("Failed to validate page", {
         pageId: page.id,
+        url: page.url,
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -132,11 +130,22 @@ export const processPages = (
  * @throws {createNotionAPIError} If API call fails
  */
 export const fetchRawPages = async (): Promise<PageObjectResponse[]> => {
+  logger.info("Starting to fetch raw pages");
   const notion = getNotionClient();
-  const rootPageId = NOTION_ROOT_PAGE_ID;
+
+  if (!NOTION_ROOT_PAGE_ID) {
+    logger.error("NOTION_ROOT_PAGE_ID environment variable is missing");
+    throw createNotionAPIError(
+      "NOTION_ROOT_PAGE_ID environment variable is required"
+    );
+  }
+
+  logger.info("Fetching pages with root page ID", {
+    rootPageId: NOTION_ROOT_PAGE_ID,
+  });
 
   const allPages: PageObjectResponse[] = [];
-  const queue: string[] = [rootPageId];
+  const queue: string[] = [NOTION_ROOT_PAGE_ID];
   const visited = new Set<string>();
 
   while (queue.length > 0) {
@@ -145,16 +154,35 @@ export const fetchRawPages = async (): Promise<PageObjectResponse[]> => {
     visited.add(pageId);
 
     try {
+      logger.info("Fetching page content", { pageId });
       // Get the page content
       const page = (await rateLimitedFetch(() =>
         notion.pages.retrieve({ page_id: pageId })
       )) as PageObjectResponse;
+
+      logger.info("Successfully fetched page", {
+        pageId,
+        hasProperties: "properties" in page,
+        propertyTypes:
+          "properties" in page
+            ? Object.entries(page.properties).map(([key, value]) => ({
+                name: key,
+                type: value.type,
+              }))
+            : [],
+        url: page.url,
+      });
 
       // Get child blocks
       let hasMore = true;
       let startCursor: string | undefined = undefined;
 
       while (hasMore) {
+        logger.info("Fetching child blocks", {
+          pageId,
+          startCursor,
+        });
+
         const response = await rateLimitedFetch(() =>
           notion.blocks.children.list({
             block_id: pageId,
@@ -172,6 +200,15 @@ export const fetchRawPages = async (): Promise<PageObjectResponse[]> => {
         const childPageIds = childPageBlocks.map(
           (block: BlockObjectResponse) => block.id
         );
+
+        logger.info("Found child pages", {
+          pageId,
+          childCount: childPageIds.length,
+          childPageTitles: childPageBlocks.map((block) =>
+            "child_page" in block ? block.child_page.title : null
+          ),
+        });
+
         queue.push(...childPageIds);
 
         hasMore = response.has_more;
@@ -181,15 +218,34 @@ export const fetchRawPages = async (): Promise<PageObjectResponse[]> => {
       // Only add pages that have the required properties
       if ("properties" in page) {
         allPages.push(page);
+        logger.info("Added page to results", {
+          pageId,
+          title:
+            page.properties.title?.type === "title"
+              ? page.properties.title.title.map((t) => t.plain_text).join("")
+              : "No title property",
+        });
+      } else {
+        logger.warn("Skipping page without properties", {
+          pageId,
+          object_type: (page as { object: string }).object,
+          url: (page as { url: string }).url,
+        });
       }
     } catch (error) {
-      logger.warn("Failed to fetch page", {
+      logger.error("Failed to fetch page", {
         pageId,
         error: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
       });
       continue;
     }
   }
+
+  logger.info("Completed fetching raw pages", {
+    totalPages: allPages.length,
+    visitedPages: visited.size,
+  });
 
   return allPages;
 };
@@ -248,8 +304,8 @@ export const fetchPageContent = async (
       notion.pages.retrieve({ page_id: pageId })
     )) as PageObjectResponse;
 
-    if ("properties" in page && "Title" in page.properties) {
-      const titleProp = page.properties.Title;
+    if ("properties" in page && "title" in page.properties) {
+      const titleProp = page.properties.title;
       if ("title" in titleProp && titleProp.title.length > 0) {
         content.push(titleProp.title[0].plain_text);
       }
@@ -308,9 +364,7 @@ export const fetchPublishedPosts = async (): Promise<NotionPage[]> => {
 };
 
 /**
- * Gets unique categories from Notion pages based on page hierarchy
- * @param pages - Array of Notion pages
- * @returns Object containing regular and MIT categories
+ * Gets unique categories from pages
  */
 export const getCategories = (
   pages: NotionPage[]
@@ -322,125 +376,40 @@ export const getCategories = (
   const mitCategories = new Set<string>();
 
   for (const page of pages) {
-    // Check if page has a parent relation
-    const parentRelation = page.properties.Parent?.relation?.[0]?.id;
-    const mitParentRelation = page.properties["MIT Parent"]?.relation?.[0]?.id;
+    const parentId = page.properties.parent?.relation?.[0]?.id;
+    const mitParentId = page.properties.mit_parent?.relation?.[0]?.id;
 
-    if (parentRelation) {
-      regularCategories.add(parentRelation);
-    }
-    if (mitParentRelation) {
-      mitCategories.add(mitParentRelation);
-    }
+    if (parentId) regularCategories.add(parentId);
+    if (mitParentId) mitCategories.add(mitParentId);
   }
 
-  const sortedRegularCategories = Array.from(regularCategories).sort();
-  const sortedMitCategories = Array.from(mitCategories).sort();
-
   return {
-    regularCategories: sortedRegularCategories,
-    mitCategories: sortedMitCategories,
+    regularCategories: Array.from(regularCategories).sort(),
+    mitCategories: Array.from(mitCategories).sort(),
   };
 };
 
 /**
- * Type guards for Notion property types
- */
-const isTitle = (prop: unknown): prop is TitlePropertyItemObjectResponse =>
-  !!prop && typeof prop === "object" && "type" in prop && prop.type === "title";
-
-const isSelect = (prop: unknown): prop is SelectPropertyItemObjectResponse =>
-  !!prop &&
-  typeof prop === "object" &&
-  "type" in prop &&
-  prop.type === "select";
-
-const isPeople = (prop: unknown): prop is PeoplePropertyItemObjectResponse =>
-  !!prop &&
-  typeof prop === "object" &&
-  "type" in prop &&
-  prop.type === "people";
-
-const isRichText = (
-  prop: unknown
-): prop is { rich_text: RichTextItemResponse[] } =>
-  !!prop &&
-  typeof prop === "object" &&
-  "type" in prop &&
-  prop.type === "rich_text";
-
-const isUrl = (prop: unknown): prop is UrlPropertyItemObjectResponse =>
-  !!prop && typeof prop === "object" && "type" in prop && prop.type === "url";
-
-/**
  * Transforms Notion pages to D1Post format
- * If content has changed (detected by notion_last_edited_at),
- * clears AI-generated fields to trigger regeneration
  */
-export const transformToD1Posts = (pages: PageObjectResponse[]): D1Post[] => {
-  return pages.map((page) => {
-    // Extract basic metadata that should always be present
-    const id = page.id;
-    const created_at = page.created_time;
-    const updated_at = page.last_edited_time;
-    const notion_last_edited_at = page.last_edited_time;
-    const notion_url = page.url;
-
-    // Extract title with fallback
-    let title = "Untitled";
-    if ("properties" in page && "title" in page.properties) {
-      const titleProp = page.properties.title;
-      if (isTitle(titleProp) && titleProp.title.length > 0) {
-        title = titleProp.title[0].plain_text;
-      }
-    }
-
-    // Extract optional properties with fallbacks
-    let category = "Uncategorized";
-    let author = "Unknown";
-    let excerpt: string | null = null;
-
-    if ("properties" in page) {
-      // Try to extract category
-      const categoryProp = page.properties.Category;
-      if (isSelect(categoryProp) && categoryProp.select) {
-        category = categoryProp.select.name;
-      }
-
-      // Try to extract author
-      const authorProp = page.properties.Author;
-      if (isPeople(authorProp) && authorProp.people.length > 0) {
-        const user = authorProp.people[0];
-        author = "name" in user ? user.name ?? "Unknown" : "Unknown";
-      }
-
-      // Try to extract excerpt
-      const excerptProp = page.properties.Excerpt;
-      if (isRichText(excerptProp) && excerptProp.rich_text.length > 0) {
-        excerpt = excerptProp.rich_text[0].plain_text;
-      }
-    }
-
-    // Return D1Post with all fields
-    return {
-      id,
-      title,
-      created_at,
-      updated_at,
-      notion_last_edited_at,
-      category,
-      author,
-      notion_url,
-      excerpt,
-      // Extended fields with null defaults
-      summary: null,
-      mins_read: null,
-      image_task_id: null,
-      image_url: null,
-      tags: null,
-      r2_image_url: null,
-    };
-  });
+export const transformToD1Posts = (pages: NotionPage[]): D1Post[] => {
+  return pages.map((page) => ({
+    id: page.id,
+    title: page.properties.title.title.map((item) => item.plain_text).join(""),
+    created_at: page.created_time,
+    updated_at: page.last_edited_time,
+    notion_url: page.url,
+    notion_last_edited_at: page.last_edited_time,
+    category: page.properties.category?.select?.name || "Uncategorized",
+    author: page.properties.author?.people?.[0]?.name || "Unknown",
+    excerpt: null,
+    summary: null,
+    mins_read: null,
+    image_task_id: null,
+    image_url: null,
+    tags: null,
+    r2_image_url: null,
+  }));
 };
 
 export const initNotionClient = (token: string): Client => {

@@ -11,6 +11,8 @@ exact = true
 coverage = true
 # Use TypeScript for tests
 loader = "ts"
+# Load test setup file
+preload = ["test/setup.ts"]
 
 [debug]
 # Enable source maps for debugging

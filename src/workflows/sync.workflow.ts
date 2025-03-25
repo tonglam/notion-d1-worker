@@ -4,7 +4,7 @@ import {
   fetchRawPages,
   transformToD1Posts,
 } from "../services/notion.service";
-import type { D1Post, SyncResult } from "../types";
+import type { D1Post, NotionPage, SyncResult } from "../types";
 import { handleError } from "../utils/errors.util";
 import { createLogger } from "../utils/logger.util";
 
@@ -58,7 +58,7 @@ export const syncWorkflow = async (): Promise<SyncResult> => {
       totalRawPages: rawPages.length,
     });
 
-    const notionPosts = transformToD1Posts(rawPages);
+    const notionPosts = transformToD1Posts(rawPages as unknown as NotionPage[]);
     logger.info("Transformed posts", {
       totalTransformedPosts: notionPosts.length,
     });
